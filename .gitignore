@@ -1,0 +1,9 @@
+.venv
+.vscode
+
+# uv related
+.python-version
+uv.lock
+
+**/__pycache__
+**/*.pyc
