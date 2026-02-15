@@ -1,6 +1,7 @@
 from torch.utils.data import Dataset
 from pathlib import Path
 import re
+from lxml import etree
 
 
 class SVGSample:
@@ -12,16 +13,12 @@ class SVGSample:
         return f"SVGSample(svg_file={self.svg_file}, txt_len={len(self.txt)})"
         
 
-def _clean_svg(svg):
-    # CRLF to LF
+def clean_svg(svg):
     svg = svg.replace('\r\n', '\n').replace('\r', '\n')
-    # Remove <?xml ...> declaration
-    svg = re.sub(r'<\?xml[^>]*\?>', '', svg)
-    # Remove DOCTYPE declaration    
-    svg = re.sub(r'<!DOCTYPE[^>]*>', '', svg)
-    # Remove empty lines
-    svg = svg.strip()
-    return svg
+    parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
+    root = etree.fromstring(svg.encode('utf-8'), parser=parser)
+    return etree.tostring(root, encoding='unicode', pretty_print=False)
+
 
 
 def load_svg_samples(svg_dir):
@@ -29,9 +26,10 @@ def load_svg_samples(svg_dir):
     for svg_file in Path(svg_dir).glob('*.svg'):
         with open(svg_file, 'r', encoding='utf-8') as f:
             svg_content = f.read()
-            cleaned_svg = _clean_svg(svg_content)
+            cleaned_svg = clean_svg(svg_content)
             svg_samples.append(SVGSample(txt=cleaned_svg, svg_file=svg_file))
     return svg_samples
+
 
 
 class SVGDataset(Dataset):
