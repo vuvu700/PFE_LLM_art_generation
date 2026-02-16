@@ -3,25 +3,25 @@ from pathlib import Path
 import re
 from lxml import etree
 
+parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
 
 class SVGSample:
-    def __init__(self, txt, svg_file):
-        self.txt = txt
-        self.svg_file = svg_file
+    def __init__(self, txt:str, svg_file:Path):
+        self.txt: str = txt
+        self.svg_file:Path = svg_file
         
     def __str__(self):
-        return f"SVGSample(svg_file={self.svg_file}, txt_len={len(self.txt)})"
+        return f"{self.__class__.__name__}(svg_file={self.svg_file}, txt_len={len(self.txt)})"
         
 
-def clean_svg(svg):
-    svg = svg.replace('\r\n', '\n').replace('\r', '\n')
-    parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
+def clean_svg(svg:str)->str:
+    #svg = svg.replace('\r\n', '\n').replace('\r', '\n')
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
 
 
 
-def load_svg_samples(svg_dir):
+def load_svg_samples(svg_dir:Path):
     svg_samples = []
     for svg_file in Path(svg_dir).glob('*.svg'):
         with open(svg_file, 'r', encoding='utf-8') as f:
@@ -33,11 +33,11 @@ def load_svg_samples(svg_dir):
 
 
 class SVGDataset(Dataset):
-    def __init__(self, svg_dir):
-        self.samples = load_svg_samples(svg_dir)
+    def __init__(self, svg_dir:Path):
+        self.samples: list[SVGSample] = load_svg_samples(svg_dir)
 
     def __len__(self):
         return len(self.samples)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx:int)->str:
         return self.samples[idx].txt
