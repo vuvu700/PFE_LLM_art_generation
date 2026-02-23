@@ -15,3 +15,5 @@ CURRENT_DIRECTORY = Path(__file__).parent
 
 ### logs
 LOGS_DIRECTORY = joinAndEnsure(CURRENT_DIRECTORY, "logs")
+TOKENIZER_SAVE_DIRECTORY = joinAndEnsure(CURRENT_DIRECTORY, "tokenizer_save")
+

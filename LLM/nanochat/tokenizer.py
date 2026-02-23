@@ -9,6 +9,7 @@ Two implementations are available:
 import os
 import copy
 from functools import lru_cache
+from pathlib import Path
 
 SPECIAL_TOKENS = [
     # every document begins with the Beginning of Sequence (BOS) token that delimits documents
@@ -39,24 +40,24 @@ from tokenizers.trainers import BpeTrainer
 class HuggingFaceTokenizer:
     """Light wrapper around HuggingFace Tokenizer for some utilities"""
 
-    def __init__(self, tokenizer):
-        self.tokenizer = tokenizer
+    def __init__(self, tokenizer:HFTokenizer):
+        self.tokenizer:HFTokenizer = tokenizer
 
     @classmethod
-    def from_pretrained(cls, hf_path):
+    def from_pretrained(cls, hf_path: Path):
         # init from a HuggingFace pretrained tokenizer (e.g. "gpt2")
         tokenizer = HFTokenizer.from_pretrained(hf_path)
         return cls(tokenizer)
 
     @classmethod
-    def from_directory(cls, tokenizer_dir):
+    def from_directory(cls, tokenizer_dir:Path):
         # init from a local directory on disk (e.g. "out/tokenizer")
         tokenizer_path = os.path.join(tokenizer_dir, "tokenizer.json")
         tokenizer = HFTokenizer.from_file(tokenizer_path)
         return cls(tokenizer)
 
     @classmethod
-    def train_from_iterator(cls, text_iterator, vocab_size):
+    def train_from_iterator(cls, text_iterator:list[str], vocab_size:int, special_tokens:list[str]):
         # train from an iterator of text
         # Configure the HuggingFace Tokenizer
         tokenizer = HFTokenizer(BPE(
@@ -86,7 +87,7 @@ class HuggingFaceTokenizer:
             show_progress=True,
             min_frequency=0, # no minimum frequency
             initial_alphabet=pre_tokenizers.ByteLevel.alphabet(),
-            special_tokens=SPECIAL_TOKENS,
+            special_tokens=special_tokens,
         )
         # Kick off the training
         tokenizer.train_from_iterator(text_iterator, trainer)
@@ -103,7 +104,7 @@ class HuggingFaceTokenizer:
     def id_to_token(self, id):
         return self.tokenizer.id_to_token(id)
 
-    def _encode_one(self, text, prepend=None, append=None, num_threads=None):
+    def _encode_one(self, text:str, prepend=None, append=None, num_threads=None):
         # encode a single string
         # prepend/append can be either a string of a special token or a token id directly.
         # num_threads is ignored (only used by the nanochat Tokenizer for parallel encoding)
@@ -118,7 +119,7 @@ class HuggingFaceTokenizer:
             ids.append(append_id)
         return ids
 
-    def encode_special(self, text):
+    def encode_special(self, text:str):
         # encode a single special token via exact match
         return self.tokenizer.token_to_id(text)
 
@@ -133,7 +134,7 @@ class HuggingFaceTokenizer:
         assert bos is not None, "Failed to find BOS token in tokenizer"
         return bos
 
-    def encode(self, text, *args, **kwargs):
+    def encode(self, text: str | list[str] | list[int], *args, **kwargs):
         if isinstance(text, str):
             return self._encode_one(text, *args, **kwargs)
         elif isinstance(text, list):
@@ -144,14 +145,14 @@ class HuggingFaceTokenizer:
     def __call__(self, *args, **kwargs):
         return self.encode(*args, **kwargs)
 
-    def decode(self, ids):
+    def decode(self, ids: int | list[int] | list[list[int]]):
         return self.tokenizer.decode(ids, skip_special_tokens=False)
 
-    def save(self, tokenizer_dir):
+    def save(self, tokenizer_dir:Path):
         # save the tokenizer to disk
         os.makedirs(tokenizer_dir, exist_ok=True)
         tokenizer_path = os.path.join(tokenizer_dir, "tokenizer.json")
-        self.tokenizer.save(tokenizer_path)
+        self.tokenizer.save(tokenizer_path, pretty=False)
         print(f"Saved tokenizer to {tokenizer_path}")
 
 # -----------------------------------------------------------------------------
