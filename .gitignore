@@ -1,8 +1,14 @@
+# security related
 .venv
 .vscode
+.env
+
+# project specific
+tokenizer_save/
 
 # uv related
 uv.lock
 
+# python related
 **/__pycache__
 **/*.pyc

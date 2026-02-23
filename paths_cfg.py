@@ -1,5 +1,9 @@
 import os, os.path, sys
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(".env")
+
 
 def joinAndEnsure(src:"str|Path", *other:"str|Path")->Path:
     new = (src if isinstance(src, Path) else Path(src))
@@ -15,5 +19,5 @@ CURRENT_DIRECTORY = Path(__file__).parent
 
 ### logs
 LOGS_DIRECTORY = joinAndEnsure(CURRENT_DIRECTORY, "logs")
-TOKENIZER_SAVE_DIRECTORY = joinAndEnsure(CURRENT_DIRECTORY, "tokenizer_save")
-
+TOKENIZER_SAVE_DIRECTORY = joinAndEnsure(
+    CURRENT_DIRECTORY, os.getenv('TOKENIZER_SAVE_DIRECTORY', default="tokenizer_save"))

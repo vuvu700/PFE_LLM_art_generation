@@ -44,7 +44,7 @@ class HuggingFaceTokenizer:
         self.tokenizer:HFTokenizer = tokenizer
 
     @classmethod
-    def from_pretrained(cls, hf_path: Path):
+    def from_pretrained(cls, hf_path: str):
         # init from a HuggingFace pretrained tokenizer (e.g. "gpt2")
         tokenizer = HFTokenizer.from_pretrained(hf_path)
         return cls(tokenizer)
