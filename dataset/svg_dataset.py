@@ -1,9 +1,12 @@
+from typing import Callable
 from torch.utils.data import Dataset
 from pathlib import Path
 import re
 from lxml import etree
 
 parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
+DEFAULT_TOKENIZER: Callable[[str], list[int]] = lambda svg_text: list(map(ord, svg_text))
+
 
 class SVGSample:
     def __init__(self, txt:str, svg_file:Path):
@@ -15,7 +18,6 @@ class SVGSample:
         
 
 def clean_svg(svg:str)->str:
-    #svg = svg.replace('\r\n', '\n').replace('\r', '\n')
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
 
@@ -31,13 +33,38 @@ def load_svg_samples(svg_dir:Path):
     return svg_samples
 
 
+def chunk_tokens(tokens: list[int], context_size: int) -> list[list[int]]:
+    half = context_size // 2
+    chunks = []
+    for i in range(50):
+        start = i * half
+        end = start + context_size
+        if start >= len(tokens):
+            break  # plus de tokens à couvrir
+        chunk = tokens[start:end]
+        chunks.append(chunk)
+    return chunks
 
 class SVGDataset(Dataset):
-    def __init__(self, svg_dir:Path):
-        self.samples: list[SVGSample] = load_svg_samples(svg_dir)
+    def __init__(
+        self,
+        svg_dir: Path,
+        context_size: int = 4096,
+        tokenizer: Callable[[str], list[int]] = DEFAULT_TOKENIZER,
+    ):
+        self.context_size = context_size
+        self.tokenizer = tokenizer
+
+        self.chunks: list[list[int]] = []
+
+        svg_samples = load_svg_samples(svg_dir)
+        for sample in svg_samples:
+            tokens = self.tokenizer(sample.txt)
+            svg_chunks = chunk_tokens(tokens, context_size)
+            self.chunks.extend(svg_chunks)
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.chunks)
 
-    def __getitem__(self, idx:int)->str:
-        return self.samples[idx].txt
+    def __getitem__(self, idx:int)->list[int]:
+        return self.chunks[idx]
