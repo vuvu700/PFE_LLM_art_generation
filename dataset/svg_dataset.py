@@ -1,8 +1,12 @@
+import numpy
 from typing import Callable
 from torch.utils.data import Dataset
 from pathlib import Path
 import re
 from lxml import etree
+
+_Tokens = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
+"""works like a list of tokens"""
 
 parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
 DEFAULT_TOKENIZER: Callable[[str], list[int]] = lambda svg_text: list(map(ord, svg_text))
@@ -23,26 +27,30 @@ def clean_svg(svg:str)->str:
 
 
 
-def load_svg_samples(svg_dir:Path):
-    svg_samples = []
+def load_svg_samples(svg_dir:Path)->list[SVGSample]:
+    svg_samples: list[SVGSample] = []
     for svg_file in Path(svg_dir).glob('*.svg'):
         with open(svg_file, 'r', encoding='utf-8') as f:
             svg_content = f.read()
             cleaned_svg = clean_svg(svg_content)
-            svg_samples.append(SVGSample(txt=cleaned_svg, svg_file=svg_file))
+            svg_samples.append(SVGSample(
+                txt=cleaned_svg, svg_file=svg_file))
     return svg_samples
 
 
-def chunk_tokens(tokens: list[int], context_size: int) -> list[list[int]]:
+def chunk_tokens(tokens: list[int], context_size: int) -> list[_Tokens]:
+    """return the list of chuncks to be used as samples in the dataset \
+    from a tokenized single file `tokens`"""
     half = context_size // 2
-    chunks = []
+    chunks: list[_Tokens] = []
     for i in range(50):
         start = i * half
         end = start + context_size
         if start >= len(tokens):
             break  # plus de tokens à couvrir
-        chunk = tokens[start:end]
-        chunks.append(chunk)
+        chunk = numpy.asarray(tokens[start:end], dtype=numpy.int32)
+        assert chunk.ndim == 1
+        chunks.append(chunk) # type: ignore -> alredy checked the dim 
     return chunks
 
 class SVGDataset(Dataset):
@@ -55,10 +63,10 @@ class SVGDataset(Dataset):
         self.context_size = context_size
         self.tokenizer = tokenizer
 
-        self.chunks: list[list[int]] = []
+        self.chunks: list[_Tokens] = []
 
-        svg_samples = load_svg_samples(svg_dir)
-        for sample in svg_samples:
+        self.samples = load_svg_samples(svg_dir)
+        for sample in self.samples:
             tokens = self.tokenizer(sample.txt)
             svg_chunks = chunk_tokens(tokens, context_size)
             self.chunks.extend(svg_chunks)
@@ -66,5 +74,5 @@ class SVGDataset(Dataset):
     def __len__(self):
         return len(self.chunks)
 
-    def __getitem__(self, idx:int)->list[int]:
+    def __getitem__(self, idx:int)->_Tokens:
         return self.chunks[idx]
