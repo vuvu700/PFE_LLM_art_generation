@@ -10,6 +10,7 @@ import os
 import copy
 from functools import lru_cache
 from pathlib import Path
+from typing import Iterable
 
 SPECIAL_TOKENS = [
     # every document begins with the Beginning of Sequence (BOS) token that delimits documents
@@ -57,7 +58,7 @@ class HuggingFaceTokenizer:
         return cls(tokenizer)
 
     @classmethod
-    def train_from_iterator(cls, text_iterator:list[str], vocab_size:int, special_tokens:list[str]):
+    def train_from_iterator(cls, text_iterator:Iterable[str], vocab_size:int, special_tokens:list[str]):
         # train from an iterator of text
         # Configure the HuggingFace Tokenizer
         tokenizer = HFTokenizer(BPE(
