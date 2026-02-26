@@ -2,8 +2,8 @@ import numpy
 from typing import Callable
 from torch.utils.data import Dataset
 from pathlib import Path
-import re
-from lxml import etree
+import attrs
+from lxml import etree # type: ignore
 
 _Tokens = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
 """works like a list of tokens"""
@@ -19,7 +19,25 @@ class SVGSample:
         
     def __str__(self):
         return f"{self.__class__.__name__}(svg_file={self.svg_file}, txt_len={len(self.txt)})"
-        
+
+@attrs.frozen
+class ChunckInfos():
+    svgIndex: int
+    """index du svg"""
+    chunckIndex: int
+    """index du chunck dans le svg"""
+    startCharIndex: int
+    """index du premier char du chunck par rapport au debut du svg"""
+
+@attrs.frozen
+class DatasetChunck():
+    tokens: _Tokens
+    """tokens du chunck"""
+    text: str
+    """le text initial associé au tokens du chunk"""
+    indexes: ChunckInfos
+    """de que chunck dans quel svg il s'agit"""
+    
 
 def clean_svg(svg:str)->str:
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
@@ -63,7 +81,8 @@ class SVGDataset(Dataset):
         self.context_size = context_size
         self.tokenizer = tokenizer
 
-        self.chunks: list[_Tokens] = []
+        self.chunks: list[DatasetChunck] = []
+        # TODO: stocker les données néecessaires pour le getitems dedans (donc on passe remplace)
 
         self.samples = load_svg_samples(svg_dir)
         for sample in self.samples:
@@ -74,5 +93,5 @@ class SVGDataset(Dataset):
     def __len__(self):
         return len(self.chunks)
 
-    def __getitem__(self, idx:int)->_Tokens:
+    def __getitem__(self, idx:int)->DatasetChunck:
         return self.chunks[idx]
