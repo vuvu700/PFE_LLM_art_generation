@@ -1,0 +1,18 @@
+L'image abstract_wave-pattern-art.svg est une image généré par IA sur le site: https://www.svgai.org/.
+Le prompt est le suivant: Abstract wave pattern art with flowing lines
+
+L'image image_generate_ai a été généré par le même site après la demande suivante: 
+je veux de l'art abstrait a partir de forme basique.
+
+Beaucoup d'outils générant des svg ne sont pas gratuit.
+
+Sur le site:  https://www.recraft.ai, j'ai fourni une image svg du dataset (pour le 18 et le 95) et j'ai demandé de généré quelque chose de similaire.
+Les résultats ont l'air très satisfaisant.
+
+Le site: https://fr.freepik.com permet de generer des images et peut les convertir en svg. il faut payer pour prendre en exemple d'autres images.
+Les résultats sont plutot moyens.
+
+https://icon.punkerduck.com/studio, l'explication du site sur le redit suivant: https://www.reddit.com/r/indiehackers/comments/1pn5nwu/weve_built_the_best_and_fastest_ai_svg_generator/?tl=fr
+ce svg présente des resultats cohérents sous forme d'icon. Ils utilisent pour le modèle gpt-image-1 de OpenAI.
+
+https://clickup.com/fr-FR/blog/484330/generateur-svg-ia: présente un tableau recapitulatif des differents genereateur image en svg possibles.

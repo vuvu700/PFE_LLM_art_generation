@@ -1,5 +1,6 @@
 from collections import defaultdict
-
+from pathlib import Path
+import json
 class Historique():
     
     def __init__(self):
@@ -37,8 +38,31 @@ class Historique():
         return self.commentaries
 
     
-    
-    #def load_json(self):
+    #sauvergarder et ouvrir historique avec json
+    def save(self, historique_path:Path):
+        historique_path = historique_path.with_suffix(".json")
+        directory = historique_path.parent
+        assert directory.exists(), \
+            FileNotFoundError(f"missing directory to save the historique: {directory.as_posix()}")
+        print(f"saving the historique to: {historique_path.as_posix()}")
+        data = {"informations": self.informations,"commentaries": dict(self.commentaries)}
+        with open(historique_path, "w") as f:
+            json.dump(data, f)
 
-    #def save_json(self):
+       
+    @classmethod
+    def load(cls, historique_path:Path):
+        historique_path = historique_path.with_suffix(".json")
+        directory = historique_path.parent
+        assert directory.exists(), \
+            FileNotFoundError(f"missing directory to load the historique: {directory.as_posix()}")
+        print(f"loading the historique from: {historique_path.as_posix()}")
+        with open(historique_path, "r") as f:
+            data = json.load(f)
+
+        historique = cls()
+        historique.informations = data.get("informations", {})
+        historique.commentaries = defaultdict(list, data.get("commentaries", {}))
+
+        return historique
 
