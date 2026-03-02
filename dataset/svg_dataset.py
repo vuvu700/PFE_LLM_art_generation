@@ -80,18 +80,25 @@ class SVGDataset(Dataset):
     ):
         self.context_size = context_size
         self.tokenizer = tokenizer
-
         self.chunks: list[DatasetChunck] = []
-        # TODO: stocker les données néecessaires pour le getitems dedans (donc on passe remplace)
-
+        
         self.samples = load_svg_samples(svg_dir)
-        for sample in self.samples:
+        
+        half = context_size // 2
+        for svg_index, sample in enumerate(self.samples):
             tokens = self.tokenizer(sample.txt)
             svg_chunks = chunk_tokens(tokens, context_size)
-            self.chunks.extend(svg_chunks)
+            for chunck_index, token_chunk in enumerate(svg_chunks):
+                start = chunck_index * half
+                self.chunks.append(DatasetChunck(
+                    tokens=token_chunk,
+                    text=sample.txt,
+                    indexes=ChunckInfos(svgIndex=svg_index, chunckIndex=chunck_index, startCharIndex=start)
+                ))
+
 
     def __len__(self):
         return len(self.chunks)
 
-    def __getitem__(self, idx:int)->DatasetChunck:
-        return self.chunks[idx]
+    def __getitem__(self, idx:int)->_Tokens:
+        return self.chunks[idx].tokens
