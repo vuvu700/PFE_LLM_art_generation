@@ -1,3 +1,6 @@
+###############################################################################################################################################
+Site pour generer des images svg, certaines sont présentes dans ce dossier:
+
 L'image abstract_wave-pattern-art.svg est une image généré par IA sur le site: https://www.svgai.org/.
 Le prompt est le suivant: Abstract wave pattern art with flowing lines
 
@@ -16,3 +19,21 @@ https://icon.punkerduck.com/studio, l'explication du site sur le redit suivant: 
 ce svg présente des resultats cohérents sous forme d'icon. Ils utilisent pour le modèle gpt-image-1 de OpenAI.
 
 https://clickup.com/fr-FR/blog/484330/generateur-svg-ia: présente un tableau recapitulatif des differents genereateur image en svg possibles.
+
+
+###############################################################################################################################################
+Pour apprendre le svg:
+
+https://grafikart.fr/tutoriels/sprite-svg-691: les 5 premieres minutes de videos recapitule bien a quoi sert le svg.
+
+https://www.snoweb.io/fr/web-design/fichier-svg/: guide pour editer un fichier svg.
+
+https://developer.mozilla.org/fr/docs/Web/SVG/Reference/Element: recapitulatif de tout les elements du svg.
+
+
+#################################################################################################################################################
+Papier recherche sur la generation de svg:
+
+https://arxiv.org/pdf/2510.22684: (Robosvg) recherche et compare les differentes methodes sur laquelle sont generer les svg. Traite partiellement le cas svg à svg.
+
+https://arxiv.org/pdf/2007.11301: (Deepsvg) recherche qui traite le cas svg à svg a travers un encodeur et un decodeur.
