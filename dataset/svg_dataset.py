@@ -1,33 +1,39 @@
 import numpy
-from typing import Callable
+from typing import Callable, TypedDict
 from torch.utils.data import Dataset
 from pathlib import Path
 import attrs
-from lxml import etree # type: ignore
+from lxml import etree  # type: ignore
 
 _Tokens = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
 """works like a list of tokens"""
 
 parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
-DEFAULT_TOKENIZER: Callable[[str], list[int]] = lambda svg_text: list(map(ord, svg_text))
+DEFAULT_TOKENIZER: Callable[[str], list[int]] = \
+    lambda svg_text: list(map(ord, svg_text))
+DEFAULT_DECODER: Callable[[list[int]], str] = \
+    lambda tokens: "".join(map(chr, tokens))
 
 
 class SVGSample:
-    def __init__(self, txt:str, svg_file:Path):
+    def __init__(self, txt: str, svg_file: Path):
         self.txt: str = txt
-        self.svg_file:Path = svg_file
-        
+        self.svg_file: Path = svg_file
+
     def __str__(self):
-        return f"{self.__class__.__name__}(svg_file={self.svg_file}, txt_len={len(self.txt)})"
+        return f"{self.__class__.__name__}(" \
+            f"svg_file={self.svg_file}, txt_len={len(self.txt)})"
+
 
 @attrs.frozen
 class ChunckInfos():
+    datasetIndex: int
+    """index du chunck dans le dataset"""
     svgIndex: int
     """index du svg"""
     chunckIndex: int
     """index du chunck dans le svg"""
-    startCharIndex: int
-    """index du premier char du chunck par rapport au debut du svg"""
+
 
 @attrs.frozen
 class DatasetChunck():
@@ -37,15 +43,21 @@ class DatasetChunck():
     """le text initial associé au tokens du chunk"""
     indexes: ChunckInfos
     """de que chunck dans quel svg il s'agit"""
-    
 
-def clean_svg(svg:str)->str:
+
+class BatchDatas(TypedDict):
+    tokens: _Tokens
+    datasetIndex: int
+    svgIndex: int
+    chunckIndex: int
+
+
+def clean_svg(svg: str) -> str:
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
 
 
-
-def load_svg_samples(svg_dir:Path)->list[SVGSample]:
+def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
     svg_samples: list[SVGSample] = []
     for svg_file in Path(svg_dir).glob('*.svg'):
         with open(svg_file, 'r', encoding='utf-8') as f:
@@ -68,8 +80,9 @@ def chunk_tokens(tokens: list[int], context_size: int) -> list[_Tokens]:
             break  # plus de tokens à couvrir
         chunk = numpy.asarray(tokens[start:end], dtype=numpy.int32)
         assert chunk.ndim == 1
-        chunks.append(chunk) # type: ignore -> alredy checked the dim 
+        chunks.append(chunk)  # type: ignore -> alredy checked the dim
     return chunks
+
 
 class SVGDataset(Dataset):
     def __init__(
@@ -77,28 +90,36 @@ class SVGDataset(Dataset):
         svg_dir: Path,
         context_size: int = 4096,
         tokenizer: Callable[[str], list[int]] = DEFAULT_TOKENIZER,
+        decoder: Callable[[list[int]], str] = DEFAULT_DECODER,
     ):
         self.context_size = context_size
         self.tokenizer = tokenizer
+        self.decoder = decoder
         self.chunks: list[DatasetChunck] = []
-        
+
         self.samples = load_svg_samples(svg_dir)
-        
-        half = context_size // 2
+
         for svg_index, sample in enumerate(self.samples):
             tokens = self.tokenizer(sample.txt)
             svg_chunks = chunk_tokens(tokens, context_size)
             for chunck_index, token_chunk in enumerate(svg_chunks):
-                start = chunck_index * half
                 self.chunks.append(DatasetChunck(
                     tokens=token_chunk,
-                    text=sample.txt,
-                    indexes=ChunckInfos(svgIndex=svg_index, chunckIndex=chunck_index, startCharIndex=start)
+                    text=self.decoder(token_chunk.tolist()),
+                    indexes=ChunckInfos(
+                        datasetIndex=len(self.chunks),
+                        svgIndex=svg_index,
+                        chunckIndex=chunck_index)
                 ))
-
 
     def __len__(self):
         return len(self.chunks)
 
-    def __getitem__(self, idx:int)->_Tokens:
-        return self.chunks[idx].tokens
+    def __getitem__(self, idx: int) -> BatchDatas:
+        ch = self.chunks[idx]
+        indexes = ch.indexes
+        return BatchDatas(
+            tokens=ch.tokens,
+            datasetIndex=indexes.datasetIndex,
+            svgIndex=indexes.svgIndex,
+            chunckIndex=indexes.chunckIndex)
