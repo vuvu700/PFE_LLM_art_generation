@@ -67,3 +67,39 @@ il faut reconstituer des fichiers a partir des fragments generés
         - "[": premiere moitiée du chunk (non conservés)
         - "#": seconde moitiée du chunck (la partie conservée)
 """
+
+import svgcheck.checksvg
+import svgcheck.log
+from pathlib import Path
+from lxml import etree
+import metrics.count_error_svg.count_error as count_error
+
+def svg_is_fatal(my_svg: Path):
+    try:
+        parser = etree.XMLParser()
+        tree = etree.parse(my_svg, parser)
+        root = tree.getroot()
+    except etree.XMLSyntaxError:
+        return True
+    
+    return False
+
+
+def svg_nb_errors(my_svg: Path):
+    nb_fatal_errors = 0
+    nb_svg_warnings = 0
+    parser = etree.XMLParser()
+
+    try:
+        tree = etree.parse(my_svg, parser)
+        root = tree.getroot()
+    except etree.XMLSyntaxError:
+        nb_fatal_errors = len(parser.error_log)
+        return nb_fatal_errors, 0
+    
+    count_error.errorCount = 0
+    count_error.check(root)
+
+
+    return 0, count_error.errorCount
+
