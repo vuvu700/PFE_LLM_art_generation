@@ -67,3 +67,23 @@ il faut reconstituer des fichiers a partir des fragments generés
         - "[": premiere moitiée du chunk (non conservés)
         - "#": seconde moitiée du chunck (la partie conservée)
 """
+from LLM import Model
+
+
+def get_learning_rates(model:Model):
+    names = [
+        "lm_head", "embedding",  "value_embeds", "residuals", "x0", 
+        ] + [f"transformers_grp_{i}" for i in range(4)]
+    return {f"lr_{names[i]}": optim['lr']
+            for i, optim in enumerate(model.optimizer.param_groups)}
+
+
+
+
+
+
+
+
+
+
+
