@@ -75,6 +75,12 @@ from lxml import etree
 import metrics.count_error_svg.count_error as count_error
 
 def svg_is_fatal(my_svg: Path):
+    """
+    Permet de voir si on peut ouvrir un fichier ou pas.
+    Si True, il y a donc un probleme sur le fichier.
+    Input: Path
+    Output: Bool
+    """
     try:
         parser = etree.XMLParser()
         tree = etree.parse(my_svg, parser)
@@ -86,8 +92,14 @@ def svg_is_fatal(my_svg: Path):
 
 
 def svg_nb_errors(my_svg: Path):
+    """
+    Permet de compter le nombre d'erreurs fatales et non fatales d'un fichier svg.
+    Une erreur est considerer comme fatal si on n'arrive pas a ouvrir le fichier svg a cause de cette erreur.
+    L'implementation des erreurs non fatal etant absentes du fait de la non pertinance des resultats, la valeur renvoyer est None.
+    Input: Path
+    Output: (int, None)
+    """
     nb_fatal_errors = 0
-    nb_svg_warnings = 0
     parser = etree.XMLParser()
 
     try:
@@ -95,8 +107,10 @@ def svg_nb_errors(my_svg: Path):
         root = tree.getroot()
     except etree.XMLSyntaxError:
         nb_fatal_errors = len(parser.error_log)
-        return nb_fatal_errors, 0
+        return nb_fatal_errors, None
     
+    return 0, None
+    raise NotImplementedError("le nombre  d'erreurs non fatal des svg ne sont pas listés. On n'a pas trouvé de méthodes abordables afin de corriger cela")
     count_error.errorCount = 0
     count_error.check(root)
 
