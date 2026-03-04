@@ -24,6 +24,8 @@ for the training we will mesure the following metrics:
         Evaluates the specified n-gram overlap. Focuses on recall.
 
  - others:
+    - logits standard deviation (SD) [TRAIN]
+        the mean SD of the logits (use the dim of the vocab for sd)
     - Learning Rate (LR) [TRAIN]
         it migth change during training with some scheduling
         
@@ -67,7 +69,7 @@ il faut reconstituer des fichiers a partir des fragments generés
         - "[": premiere moitiée du chunk (non conservés)
         - "#": seconde moitiée du chunck (la partie conservée)
 """
-from LLM import Model
+from LLM.model import Model
 from pathlib import Path
 from lxml import etree
 import metrics.count_error_svg.count_error as count_error
