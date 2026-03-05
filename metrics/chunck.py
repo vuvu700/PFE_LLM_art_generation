@@ -55,7 +55,7 @@ def sampling_logits(logits: torch.Tensor, temperature=1.0, top_k=None, seed=-1):
 
 def assemble_decode(
         logits: dict[tuple[int, int], torch.Tensor],
-        tokenizer: Tokenizer, temperature=1.0, 
+        tokenizer: Tokenizer, context_size: int, temperature=1.0,
         top_k=None, seed=-1) -> tuple[dict[int, str], dict[int, list[int]]]:
     """
     Assemble les chunks de tokens de chaque SVG puis les decodes.
@@ -63,6 +63,7 @@ def assemble_decode(
     Entrée:
         logits: dict {(svgIndex, chunkIndex): torch.Tensor}
         tokenizer: Tokenizer
+        contextesize: int doit etre pair
         temperature: int
         top_k: int
         seed: int
@@ -71,15 +72,26 @@ def assemble_decode(
         svgs: {svgID -> text decodé}
         svgs_tokens: {svgID -> tokens samplés}
     """
+    assert context_size%2 == 0, "la contexte size doit etre pair"
     svgs_tokens: dict[int, list[int]] = {}
-    svgs: dict[int, str] = {}
+    svg_text: dict[int, str] = {}
+    chunk_dic = {}
     for (svgIndex, chunckIndex), chunk_logits in sorted(logits.items(), key=None):
         tokens = sampling_logits(chunk_logits, temperature, top_k, seed)
-        if svgIndex not in svgs_tokens:
-            svgs_tokens[svgIndex] = []
-        svgs_tokens[svgIndex].extend(tokens)
+        if svgIndex not in chunk_dic:
+            chunk_dic[svgIndex] = {}
+        
+        chunk_dic[svgIndex][chunckIndex] = tokens
+    
+    for svgIndex in chunk_dic:
+        svgs_tokens[svgIndex] = []
+        for chunks in sorted(chunk_dic[svgIndex].keys()):
+            tokens = chunk_dic[svgIndex][chunks]
+            if chunks == 0:
+                svgs_tokens[svgIndex].extend(tokens)
+            else:
+                svgs_tokens[svgIndex].extend(tokens[context_size//2:])
 
-    for svg_idx, tokens in svgs_tokens.items():
-        svgs[svg_idx] = tokenizer.decode(tokens)
+        svg_text[svgIndex] = tokenizer.decode(svgs_tokens[svgIndex])
 
-    return svgs, svgs_tokens
+    return svg_text, svgs_tokens
