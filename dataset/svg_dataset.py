@@ -73,14 +73,16 @@ def chunk_tokens(tokens: list[int], context_size: int) -> list[_Tokens]:
     from a tokenized single file `tokens`"""
     half = context_size // 2
     chunks: list[_Tokens] = []
-    for i in range(50):
+    i = 0
+    while True:
         start = i * half
         end = start + context_size
         if start >= len(tokens):
             break  # plus de tokens à couvrir
-        chunk = numpy.asarray(tokens[start:end], dtype=numpy.int32)
+        chunk = numpy.asarray(tokens[start: end], dtype=numpy.int32)
         assert chunk.ndim == 1
         chunks.append(chunk)  # type: ignore -> alredy checked the dim
+        i += 1
     return chunks
 
 
@@ -92,6 +94,8 @@ class SVGDataset(Dataset):
         tokenizer: Callable[[str], list[int]] = DEFAULT_TOKENIZER,
         decoder: Callable[[list[int]], str] = DEFAULT_DECODER,
     ):
+        assert context_size % 2 == 0, \
+            f"la contexte size doit absolument etre paire"
         self.context_size = context_size
         self.tokenizer = tokenizer
         self.decoder = decoder
