@@ -54,7 +54,7 @@ def sampling_logits(logits: torch.Tensor, temperature=1.0, top_k=None, seed=-1):
     return tokens.tolist()
 
 def assemble_decode(
-        dataset,
+        dataset: svg_dataset.SVGDataset,
         tokenizer: Tokenizer,
         context_size: int,
         vocab_size: int,
