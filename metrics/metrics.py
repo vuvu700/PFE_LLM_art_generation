@@ -201,11 +201,11 @@ def get_learning_rates(model:Model):
 ############################# file validity metrics functions #############################
 
 
-def svg_is_fatal(my_svg: Path):
+def svg_is_fatal(my_svg: str):
     """
     Permet de voir si on peut ouvrir un fichier ou pas.
     Si True, il y a donc un probleme sur le fichier.
-    Input: Path
+    Input: str
     Output: Bool
     """
     try:
@@ -216,12 +216,12 @@ def svg_is_fatal(my_svg: Path):
         return True
     return False
 
-def svg_nb_errors(my_svg: Path):
+def svg_nb_errors(my_svg: str):
     """
     Permet de compter le nombre d'erreurs fatales et non fatales d'un fichier svg.
     Une erreur est considerer comme fatal si on n'arrive pas a ouvrir le fichier svg a cause de cette erreur.
     L'implementation des erreurs non fatal etant absentes du fait de la non pertinance des resultats, la valeur renvoyer est None.
-    Input: Path
+    Input: str
     Output: (int, None)
     """
     nb_fatal_errors = 0
