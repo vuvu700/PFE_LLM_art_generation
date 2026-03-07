@@ -2,6 +2,7 @@ import wandb
 
 from metrics.historique import Historique
 
+wandb.login()
 
 def affiche_metrics(historique: Historique, name_metrics: None | str | list[str]= None, run_name: None | str = None, id: None | str = None):
     """
