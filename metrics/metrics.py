@@ -89,6 +89,7 @@ import torch as nn
 import torch.nn.functional as F
 
 from LLM.model import Model
+from dataset.svg_dataset import IGNORE_INDEX
 
 ############################# metrics accumulator #############################
 
@@ -118,7 +119,8 @@ class MetricsAccumulator():
         self.total_tokens: int = 0
         self.total_nbChars: int = 0
         self._prof = Profiler([
-            "loss1", "loss2", "CE_related", "entropy", "SD", "topK", "accuacy"])
+            "loss1", "loss2", "filter", "CE_related",
+            "entropy", "SD", "topK", "accuacy"])
 
     # --- logits related metrics ---
     
@@ -130,42 +132,47 @@ class MetricsAccumulator():
         - targets: les token cibles a predire (batch, ctx)[Long]
         - totalNbChars: pour chaque context du batch, le nb de char dans le text
         return: the Cross-Entropy loss of the model"""
-        logits_flatten = logits.view(-1, logits.size(-1))
-        targets_flatten = targets.view(-1)
-        logits_detached = logits.detach()
         # compute the losses
         with self._prof.mesure("loss1"):
+            # the loss need the grads
             CE_loss: torch.Tensor = torch.nn.functional.cross_entropy(
-                logits_flatten, targets_flatten, ignore_index=-1, reduction="mean")
-            # CE_loss.item()
-        with self._prof.mesure("loss2"):
-            CE2_loss: torch.Tensor = torch.nn.functional.cross_entropy(
-                logits_flatten, logits_flatten.argmax(-1), ignore_index=-1, reduction="mean")
-            CE2_loss = CE2_loss.detach()
-        # CE related
-        with self._prof.mesure("CE_related"):
-            batch_size, ctx_size, vocab_size = logits_detached.shape
-            totalNbTokens: int = (ctx_size * batch_size)
-            self.total_tokens += totalNbTokens
-            self.total_nbChars += totalNbChars
-            self.total_CE += float(CE_loss.detach()) * totalNbTokens
-            self.total_CE2 += float(CE2_loss) * totalNbTokens
-        # entropy
-        with self._prof.mesure("entropy"):
-            log_probs = F.log_softmax(logits_detached, dim=-1)
-            probs = torch.exp(log_probs)
-            self.total_entropy += -float((probs * log_probs).sum())
-        # standard deviation
-        with self._prof.mesure("SD"):
-            self.total_SD += float(logits_detached.std(dim=-1).sum())
-        # top-k accuracy
-        with self._prof.mesure("topK"):
-            sorted_indices = torch.topk(logits_detached, self.topK, dim=-1)[1]
-            expanded_targets = targets.unsqueeze(-1).expand(-1, -1, self.topK)
-        with self._prof.mesure("accuacy"):
-            corrects = torch.eq(sorted_indices, expanded_targets)
-            self.total_top1 = int(torch.sum(corrects[:, :, 0]))
-            self.total_topK = int(torch.sum(corrects))
+                logits.view(-1, logits.size(-1)), targets.view(-1), 
+                ignore_index=IGNORE_INDEX, reduction="mean")
+        with torch.no_grad(): # the metrics don't need gradients
+            with self._prof.mesure("filter"):
+                # logits: (batch_size, context_size, vocab_size) | targets: (batch_size, context_size)
+                _, _, vocab_size = logits.shape
+                logits = logits[targets != IGNORE_INDEX].reshape((-1, vocab_size))
+                targets = targets[targets != IGNORE_INDEX]
+                # => logits: (nb_tokens, vocab_size) | targets: (nb_tokens)
+            with self._prof.mesure("loss2"):
+                CE2_loss: torch.Tensor = torch.nn.functional.cross_entropy(
+                    logits, logits.argmax(-1),
+                    ignore_index=IGNORE_INDEX, reduction="mean")
+            # filter the elements to ignore
+            # CE related
+            with self._prof.mesure("CE_related"):
+                totalNbTokens: int = logits.shape[0]
+                self.total_tokens += totalNbTokens
+                self.total_nbChars += totalNbChars
+                self.total_CE += float(CE_loss) * totalNbTokens
+                self.total_CE2 += float(CE2_loss) * totalNbTokens
+            # entropy
+            with self._prof.mesure("entropy"):
+                log_probs = F.log_softmax(logits, dim=-1)
+                probs = torch.exp(log_probs)
+                self.total_entropy += -float((probs * log_probs).sum())
+            # standard deviation
+            with self._prof.mesure("SD"):
+                self.total_SD += float(logits.std(dim=-1).sum())
+            # top-k accuracy
+            with self._prof.mesure("topK"):
+                sorted_indices = torch.topk(logits, self.topK, dim=-1)[1]
+            with self._prof.mesure("accuacy"):
+                expanded_targets = targets.unsqueeze(-1).expand(-1, self.topK)
+                corrects = torch.eq(sorted_indices, expanded_targets)
+                self.total_top1 += int(torch.sum(corrects[:, 0]))
+                self.total_topK += int(torch.sum(corrects))
         return CE_loss
     
     # --- to get the result ---
@@ -176,9 +183,9 @@ class MetricsAccumulator():
         CE2 = (self.total_CE2 / self.total_tokens)
         tokensPerChar = (self.total_tokens / self.total_nbChars)
         metrics = {
-            f"CE": CE, f"PPL": math.exp(CE),
+            f"CE": CE, f"CE2": CE2, 
+            f"PPL": math.exp(CE), f"PPL2": math.exp(CE2),
             f"BPC": (CE / math.log(2.0)) * tokensPerChar,
-            f"CE2": CE2, f"PPL2": math.exp(CE2),
             f"ENTROPY": (self.total_entropy / self.total_tokens),
             f"LOGITS_SD": (self.total_SD / self.total_tokens),
             f"TOP-1": (self.total_top1 / self.total_tokens),
