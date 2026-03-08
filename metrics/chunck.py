@@ -1,9 +1,14 @@
+import time
+import random
+from collections import defaultdict
+from holo.profilers import Profiler
+
 import torch
 import torch.nn.functional as F
+
 from tokenizer_pfe.tokenizer_project import Tokenizer
-from dataset import svg_dataset
-import random
-import time
+from dataset.svg_dataset import _Tokens, SVGDataset
+
 
 """a partir des `logits` en entrée, fait un sampling dessus et les assemble pour renvoyer les differents svg qu'ils composent\n
 
@@ -23,106 +28,99 @@ import time
 """
 
 
-def sampling_logits(logits: torch.Tensor, temperature=1.0, top_k=None, seed=-1):
-    """
-    On passe le logit dans lequel on applique un sampling afin de donner une liste de tokens
-
-    Entrée:
-        logits: dict {(svgIndex, chunkIndex): torch.Tensor}
-        temperature: int
-        top_k: int
-        seed: int
-
-    Sortie:
-        tokens: Liste de tokens
-    """
-    if seed >= 0:
-        torch.manual_seed(seed)
-        random.seed(seed)
-    logits = logits.squeeze(0)  # (ctx_size, vocab_size)
-    ctx_size, vocab_size = logits.shape
-    if (top_k is not None) and (top_k > 0):
-        v, _ = torch.topk(logits, min(top_k, vocab_size),
-                          dim=-1)  # (ctx, topK)
-        logits[logits < v[:, [-1]]] = -float('Inf')
-    if temperature > 0:
-        logits = logits / temperature
-        probs = F.softmax(logits, dim=-1)
-        tokens = torch.multinomial(probs, num_samples=1).squeeze(-1)
-    else:
-        tokens = torch.argmax(logits, dim=-1)
-    return tokens.tolist()
-
-def assemble_decode(
-        dataset: svg_dataset.SVGDataset,
-        tokenizer: Tokenizer,
-        context_size: int,
-        vocab_size: int,
-        temperature=1.0,
-        top_k=None,
-        seed=-1,
-        batch_size=5000
-    ) -> tuple[dict[int, str], dict[int, list[int]]]:
-    """
-    Assemble les chunks de tokens de chaque SVG puis les decodes.
-    On traite les SVG par batch. Si batch trop petite, risque de crash pour cause de probleme de memoire.
-    On decode les SVG un par un.
+class ChunckAssembler():
+    def __init__(
+            self, tokenizer: Tokenizer, context_size: int,
+            temperature:float, top_k:int|None) -> None:
+        """
+        args: 
+            `tokenizer`: le tokenizer utilisé pour decoder les tokens samplés
+            `context_size`: taille nominale du context
+            `temperature` et `top_k`: utilisés pour le sampling des logits
+        """
+        assert (context_size % 2 == 0), \
+            f"la context_size({context_size}) doit etre paire"
+        assert (top_k is None) or ((top_k > 0) and (top_k < tokenizer.get_vocab_size())), \
+            f"la valeur de top_k({top_k}) n'est pas addaptée:" \
+            f" doit etre 1 <= ... < {tokenizer.get_vocab_size()}"
+        assert temperature >= 0.0, f"temerature invalide: {temperature!r}"
+        self.tokenizer: Tokenizer = tokenizer 
+        self.context_size: int = context_size 
+        self.temperature: float = temperature
+        self.top_k: int|None = top_k
+        self._stored_chuncks: dict[int, dict[int, str]] = defaultdict(dict)
+        """{svgIndex -> {chunckIndex -> text to be assembled}}\n
+        le text deja decoupé pour l'assemblage 
+        (peut etre vide pour le dernier chunck si len() < `context_size`//2)"""
+        self._prof = Profiler(["sample", "decode", "assemble"])
     
-    Entrée:
-        dataset: Dataset contenant les chunks
-        tokenizer: Tokenizer
-        contextesize: int doit etre pair
-        temperature: int
-        top_k: int
-        seed: int
-        batch_size: int
-
-    Sortie:
-        svgs: {svgID -> text decodé}
-        svgs_tokens: {svgID -> tokens samplés}
-    """
-
-    assert context_size % 2 == 0, "context_size doit être pair"
-
-    svgs_text = {}
-    svgs_tokens = {}
-    svg_chunks = {}
-
-    for chunk in dataset.chunks:
-        svgIndex = chunk.indexes.svgIndex
-        if svgIndex not in svg_chunks:
-            svg_chunks[svgIndex] = []
-        svg_chunks[svgIndex].append(chunk)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    for svgIndex, chunks in svg_chunks.items():
-        tokens = []
-        for i, chunk in enumerate(chunks):
-            if i == 0:
-                tokens.extend(chunk.tokens)
-            else:
-                tokens.extend(chunk.tokens[context_size // 2:])
-
-        svg_tokens = []
-
-        for index in range(0, len(tokens), batch_size):
-            batch_tokens = tokens[index:index + batch_size]
-            seq_len = len(batch_tokens)
-
-            chunk_logits = torch.full((1, seq_len, vocab_size), -torch.inf, device=device)
-            idx_tensor = torch.tensor(batch_tokens, device=device)
-            chunk_logits[0, torch.arange(seq_len, device=device), idx_tensor] = 0.0
-
-            sampled_tokens = sampling_logits(chunk_logits, temperature, top_k, seed)
-            svg_tokens.extend(sampled_tokens)
-
+    def __sample(self, logits:torch.Tensor)->list[int]:
+        """sampling des logits (pas par batch)\n
+        args: 
+            `logits`: les logits a sampler (nbTokens, vocab_size)
+        return: la liste des tokens
+        """
+        # unitées de temps données a partir de tests avec context_size=4096
+        if (self.top_k is not None) and (self.top_k > 0):
+            # 100us
+            logits, _ = torch.topk(logits, self.top_k, dim=-1) # (ctx, topK)
+        if self.temperature > 0:
+            # 200us
+            probs = F.softmax(logits / self.temperature, dim=-1)
+            tokens = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        else: # 30us
+            tokens = torch.argmax(logits, dim=-1) 
+        return tokens.tolist() # 400us (TODO: partie la plus lente, a optimizer ?)
+    
+    @torch.no_grad
+    def add_logits(
+            self, batch_logits:torch.Tensor, svgIndexes:list[int], 
+            chunckIndexes:list[int])->None:
+        """decoupe, sample et decode les logits donnés, 
+        puis les stock en attendant l'assemblage\n
+        args: 
+            `batch_logits`: le batch de logits qui viens d'etre generé
+            `svgIndexes`: les index des svg du batch
+            `chunckIndexes`: les index des chuncks du batch
+        """
+        # process each chunck of the batch
+        batch_size, ctx_size, vocab_size = batch_logits.shape
+        for iBatch in range(batch_size):
+            svgIdx: int = svgIndexes[iBatch]
+            chIdx: int = chunckIndexes[iBatch]
+            logits: torch.Tensor = batch_logits[iBatch] # (ctx_size, vocab_size)
+            if chIdx != 0:
+                # => not first chunck of svg, only keep the last half
+                logits = logits[self.context_size//2: ]
+            if logits.size(0) == 0:
+                # => empty beacause the chunck is too small
+                self._stored_chuncks[svgIdx][chIdx] = ""
+                continue # finished with this chunck
+            # => non empty logits, sample from them
+            with self._prof.mesure("sample"):
+                tokens = self.__sample(logits)
+            # decode the tokens
+            with self._prof.mesure("decode"):
+                decoded = self.tokenizer.decode(tokens)
+                assert isinstance(decoded, str), f"unexpected type: {type(decoded)}"
+                self._stored_chuncks[svgIdx][chIdx] = decoded
+    
+    def assemble_chuncks(self)->dict[int, str]:
+        """assemble les chuncks decodés qui sont stockés\n
+        return: {svgIndex -> text assemblé du svg en question}
+        """
+        assembled: dict[int, str] = {}
+        # ensure there are no chunck missing
+        for svgIndex, chuncks in self._stored_chuncks.items():
+            chunckIndexes: list[int] = sorted(chuncks.keys())
+            assert chunckIndexes == list(range(len(chunckIndexes))), \
+                f"unexpected chuncks index (expected: {range(len(chunckIndexes))}) "\
+                f"but got {chunckIndexes}"
+            # => got all the chuncks of the svg, can assemble them
+            with self._prof.mesure("assemble"):
+                assembled[svgIndex] = "".join((chuncks[chIdx] for chIdx in chunckIndexes))
+        return assembled
+                
             
-            del chunk_logits, sampled_tokens
-            torch.cuda.empty_cache()
-
-        svgs_tokens[svgIndex] = svg_tokens
-        svgs_text[svgIndex] = tokenizer.decode(svg_tokens)
-        print(svgIndex ,'is decoded')
         
-    return svgs_text, svgs_tokens
+    

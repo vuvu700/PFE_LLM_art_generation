@@ -7,6 +7,7 @@ from lxml import etree  # type: ignore
 
 _Tokens = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
 """works like a list of tokens"""
+IGNORE_INDEX = -1
 
 parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
 DEFAULT_TOKENIZER: Callable[[str], list[int]] = \
@@ -93,12 +94,14 @@ class SVGDataset(Dataset):
         context_size: int = 4096,
         tokenizer: Callable[[str], list[int]] = DEFAULT_TOKENIZER,
         decoder: Callable[[list[int]], str] = DEFAULT_DECODER,
+        fillMissingTokens:bool=True,
     ):
         assert context_size % 2 == 0, \
             f"la contexte size doit absolument etre paire"
-        self.context_size = context_size
+        self.context_size: int = context_size
         self.tokenizer = tokenizer
         self.decoder = decoder
+        self.fillMissingTokens: bool = fillMissingTokens
         self.chunks: list[DatasetChunck] = []
 
         self.samples = load_svg_samples(svg_dir)
@@ -122,8 +125,16 @@ class SVGDataset(Dataset):
     def __getitem__(self, idx: int) -> BatchDatas:
         ch = self.chunks[idx]
         indexes = ch.indexes
+        tokens: _Tokens = ch.tokens
+        nbMissingTokens: int = self.context_size - len(tokens) 
+        assert nbMissingTokens >= 0, \
+            f"[BUG] unexpected chunck size: {len(tokens)} ({self.context_size=})"
+        if self.fillMissingTokens and (len(tokens) < self.context_size):
+            # => fill the missing tokens with -1 (=> will be ignored)
+            filler = numpy.full((nbMissingTokens, ), IGNORE_INDEX, dtype=numpy.int32)
+            tokens = numpy.concat([tokens, filler], axis=0) # type: ignore
         return BatchDatas(
-            tokens=ch.tokens,
+            tokens=tokens,
             datasetIndex=indexes.datasetIndex,
             svgIndex=indexes.svgIndex,
             chunckIndex=indexes.chunckIndex)
