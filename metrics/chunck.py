@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from tokenizer_pfe.tokenizer_project import Tokenizer
-from dataset.svg_dataset import _Tokens, SVGDataset
+from dataset.svg_dataset import _Tokens, SVGDataset, IGNORE_INDEX
 
 
 """a partir des `logits` en entrée, fait un sampling dessus et les assemble pour renvoyer les differents svg qu'ils composent\n
@@ -63,14 +63,20 @@ class ChunckAssembler():
         # unitées de temps données a partir de tests avec context_size=4096
         if (self.top_k is not None) and (self.top_k > 0):
             # 100us
-            logits, _ = torch.topk(logits, self.top_k, dim=-1) # (ctx, topK)
+            topk_logits, _ = torch.topk(logits, self.top_k, dim=-1) # (ctx, topK)
+            logits.masked_fill_(logits < topk_logits[:, -1:], float('-inf'))
         if self.temperature > 0:
             # 200us
             probs = F.softmax(logits / self.temperature, dim=-1)
             tokens = torch.multinomial(probs, num_samples=1).squeeze(-1)
         else: # 30us
             tokens = torch.argmax(logits, dim=-1) 
-        return tokens.tolist() # 400us (TODO: partie la plus lente, a optimizer ?)
+        return tokens.tolist() # 400us 
+        # TODO: partie la plus lente, a optimizer (! rester sur GPU !)
+        #  -> decode est ++ rapide avec list[int] que numpy
+        #   et .cpu().numpy() est plus lent car pas list[int],
+        #   ajouter .tolist() apres ne l'as pas rendu significativement 
+        #   + rapide pour les petit ctx, mais pour ctx~100K 20% de gains
     
     @torch.no_grad
     def add_logits(
@@ -83,6 +89,9 @@ class ChunckAssembler():
             `svgIndexes`: les index des svg du batch
             `chunckIndexes`: les index des chuncks du batch
         """
+        # TODO: prendre en compte les IGNORE_INDEX
+        #   -> ajouter un param targets (batch, context_size)[int64]
+        #   cut les `logits` qui ont une target == IGNORE_INDEX
         # process each chunck of the batch
         batch_size, ctx_size, vocab_size = batch_logits.shape
         for iBatch in range(batch_size):

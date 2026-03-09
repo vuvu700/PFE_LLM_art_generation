@@ -132,64 +132,75 @@ class MetricsAccumulator():
         - targets: les token cibles a predire (batch, ctx)[Long]
         - totalNbChars: pour chaque context du batch, le nb de char dans le text
         return: the Cross-Entropy loss of the model"""
+        ### les mesures de temps données sont calculée avec une somme = 10s (donc 1s = 10% tu total)
         # compute the losses
-        with self._prof.mesure("loss1"):
+        with self._prof.mesure("loss1"): # 1.9s
             # the loss need the grads
             CE_loss: torch.Tensor = torch.nn.functional.cross_entropy(
                 logits.view(-1, logits.size(-1)), targets.view(-1), 
                 ignore_index=IGNORE_INDEX, reduction="mean")
+            #torch.cuda.synchronize()
         with torch.no_grad(): # the metrics don't need gradients
-            with self._prof.mesure("filter"):
+            with self._prof.mesure("filter"): # 1.3s
                 # logits: (batch_size, context_size, vocab_size) | targets: (batch_size, context_size)
                 _, _, vocab_size = logits.shape
                 logits = logits[targets != IGNORE_INDEX].reshape((-1, vocab_size))
                 targets = targets[targets != IGNORE_INDEX]
                 # => logits: (nb_tokens, vocab_size) | targets: (nb_tokens)
-            with self._prof.mesure("loss2"):
+                #torch.cuda.synchronize()
+            with self._prof.mesure("loss2"): # 0.8s
                 CE2_loss: torch.Tensor = torch.nn.functional.cross_entropy(
                     logits, logits.argmax(-1),
                     ignore_index=IGNORE_INDEX, reduction="mean")
+                #torch.cuda.synchronize()
             # filter the elements to ignore
             # CE related
-            with self._prof.mesure("CE_related"):
+            with self._prof.mesure("CE_related"): # 0.3s
                 totalNbTokens: int = logits.shape[0]
                 self.total_tokens += totalNbTokens
                 self.total_nbChars += totalNbChars
                 self.total_CE += float(CE_loss) * totalNbTokens
                 self.total_CE2 += float(CE2_loss) * totalNbTokens
+                #torch.cuda.synchronize()
             # entropy
-            with self._prof.mesure("entropy"):
+            with self._prof.mesure("entropy"): # 2.0s
                 log_probs = F.log_softmax(logits, dim=-1)
                 probs = torch.exp(log_probs)
                 self.total_entropy += -float((probs * log_probs).sum())
+                #torch.cuda.synchronize()
             # standard deviation
-            with self._prof.mesure("SD"):
+            with self._prof.mesure("SD"): # 0.6s
                 self.total_SD += float(logits.std(dim=-1).sum())
+                #torch.cuda.synchronize()
             # top-k accuracy
-            with self._prof.mesure("topK"):
+            with self._prof.mesure("topK"): # 2.5s
                 sorted_indices = torch.topk(logits, self.topK, dim=-1)[1]
-            with self._prof.mesure("accuacy"):
+                #torch.cuda.synchronize()
+            with self._prof.mesure("accuacy"): # 0.7s
                 expanded_targets = targets.unsqueeze(-1).expand(-1, self.topK)
                 corrects = torch.eq(sorted_indices, expanded_targets)
                 self.total_top1 += int(torch.sum(corrects[:, 0]))
                 self.total_topK += int(torch.sum(corrects))
+                #torch.cuda.synchronize()
         return CE_loss
     
     # --- to get the result ---
     
     def get_metrics(self)->dict[str, float]:
         """return the current state of the different metrics accumulated this epoch"""
-        CE = (self.total_CE / self.total_tokens)
-        CE2 = (self.total_CE2 / self.total_tokens)
-        tokensPerChar = (self.total_tokens / self.total_nbChars)
+        total_tokens = (self.total_tokens if self.total_tokens != 0 else -1)
+        total_nbChars = (self.total_nbChars if self.total_nbChars != 0 else -1)
+        CE = (self.total_CE / total_tokens)
+        CE2 = (self.total_CE2 / total_tokens)
+        tokensPerChar = (total_tokens / total_nbChars)
         metrics = {
             f"CE": CE, f"CE2": CE2, 
             f"PPL": math.exp(CE), f"PPL2": math.exp(CE2),
             f"BPC": (CE / math.log(2.0)) * tokensPerChar,
-            f"ENTROPY": (self.total_entropy / self.total_tokens),
-            f"LOGITS_SD": (self.total_SD / self.total_tokens),
-            f"TOP-1": (self.total_top1 / self.total_tokens),
-            f"TOP-{self.topK}": (self.total_topK / self.total_tokens)}
+            f"ENTROPY": (self.total_entropy / total_tokens),
+            f"LOGITS_SD": (self.total_SD / total_tokens),
+            f"TOP-1": (self.total_top1 / total_tokens),
+            f"TOP-{self.topK}": (self.total_topK / total_tokens)}
         return {f"{name}_{self.usage}": value for name, value in metrics.items()}
 
 
