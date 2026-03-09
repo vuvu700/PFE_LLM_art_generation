@@ -38,6 +38,7 @@ class Model():
     __TOKENIZER_NAME = "tokenizer.json" # sauvgardé 1 fois, a la racine de l'IA
     __MODEL_NAME = "model.pkl" # save dans les versions
     __HISTORY_NAME = "history.json" # save dans les versions
+    __METADATAS_NAME = "metadatas.pkl" # save dans les versions
     
     llm: GPT
     tokenizer: Tokenizer
@@ -175,7 +176,9 @@ class Model():
         directory = self._save_manager.createNewVersionFolder(versionName)
         # -> LLM & optimizer
         torch.save(
-            obj={"llm": self.llm, "optimizer": self.optimizer},
+            obj={
+                "llm": self.llm.state_dict(),
+                "optimizer": self.optimizer.state_dict()},
             f=directory.joinpath(self.__MODEL_NAME))
         # -> tokenizer
         tokenizerPath = self.get_tokenizer_path()
@@ -183,15 +186,74 @@ class Model():
             self.tokenizer.save(tokenizerPath)
         # -> Historique
         self.historique.save(directory.joinpath(self.__HISTORY_NAME))
+        # -> metadatas
+        with open(directory.joinpath(self.__METADATAS_NAME), mode="wb") as file:
+            metadatas = {
+                "prof": self._prof,
+                "nb_epoch_done": self.__nb_epoches_done,
+                "llm_config": self.config}
+            pickle.dump(metadatas, file)
         return (ID, directory)
     
     @staticmethod
-    def load(ai_name:str, versionID:int)->"Model":
+    def load(ai_name:str, versionID:int, device:torch.device)->"Model":
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `ai_name`: le nom de la version crée
         `versionID`: le numero de la version a charger
         return: (ID de la version, chemain de la version)"""
-        raise NotImplementedError("TODO: still in developement")
+        AI_Folder = MODELS_SAVE_DIRECTORY.joinpath(ai_name)
+        assert AI_Folder.exists(), \
+            f"there is AI directory named: {ai_name!r} inside: {MODELS_SAVE_DIRECTORY.as_posix()}"
+        tree = SavedAiTree(AI_Folder)
+        version_dir = tree.getVersionDirectory(versionID)
+        model = object.__new__(Model)
+        model._save_manager = tree
+        # -> tokenizer
+        model.tokenizer = Tokenizer.load(AI_Folder.joinpath(Model.__TOKENIZER_NAME))
+        # -> metadatas
+        with open(version_dir.joinpath(Model.__METADATAS_NAME), mode="rb") as file:
+            metadatas = pickle.load(file)
+            model._prof = metadatas["prof"]
+            model.__nb_epoches_done = metadatas["nb_epoch_done"]
+            config_datas = metadatas["llm_config"]
+        # -> history
+        model.historique = Historique.load(version_dir.joinpath(Model.__HISTORY_NAME))
+        # -> LLM & optimizer
+        model_data: dict = torch.load(
+            version_dir.joinpath(Model.__MODEL_NAME), map_location=device)
+        # -> rebuild the model
+        model.__rebuild_LLM(
+            llm_datas=model_data["llm"], 
+            optim_datas=model_data["optimizer"], 
+            config=config_datas, 
+            device=device)
+        return model
+        
+    
+    def __rebuild_LLM(
+            self, llm_datas:dict, optim_datas:dict, 
+            config:GPTConfig, device:torch.device)->None:
+        """utilitaire a appeler aprés avoir load un model\n
+        principalement repris de nanochat.checkpoint_manager.build_model"""
+        assert isinstance(config, GPTConfig)
+        if device.type in {"cpu", "mps"}:
+            # Convert bfloat16 tensors to float for CPU inference
+            llm_datas = {
+                k: v.float() if v.dtype == torch.bfloat16 else v
+                for k, v in llm_datas.items()}
+        llm_datas = {k.removeprefix("_orig_mod."): v for k, v in llm_datas.items()}
+        with torch.device("meta"):
+            llm = GPT(config)
+        # Load the model state
+        llm.to_empty(device=device)
+        llm.init_weights() # note: this is dumb, but we need to init the rotary embeddings. TODO: fix model re-init
+        llm.load_state_dict(llm_datas, strict=True, assign=True)
+        optim = llm.setup_optimizer()
+        optim.load_state_dict(optim_datas)
+        # set the llm and optimizer on self
+        self.llm = torch.compile(llm, dynamic=False) # type: ignore
+        self.optimizer = optim
+        
     
     
     def train(
