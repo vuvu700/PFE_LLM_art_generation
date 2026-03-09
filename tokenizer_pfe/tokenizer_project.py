@@ -1,7 +1,8 @@
-from LLM.nanochat.tokenizer import HuggingFaceTokenizer
-from tokenizers import Tokenizer as HFTokenizer
-from pathlib import Path
 import json
+from pathlib import Path
+from typing import overload
+
+from LLM.nanochat.tokenizer import HuggingFaceTokenizer, HFTokenizer
 
 
 START_TOKEN = "<|output_start|>"
@@ -10,6 +11,27 @@ SPECIAL_TOKENS = [START_TOKEN, END_TOKEN]
 
 
 class Tokenizer(HuggingFaceTokenizer):
+
+    @overload
+    def encode(self, text:str)->list[int]:
+        ...
+    @overload
+    def encode(self, text:list[str])->list[list[str]]:
+        ...
+    def encode(self, text:str|list[str]):
+        return super().encode(text)
+    
+    @overload
+    def decode(self, ids:int)->str:
+        ...
+    @overload
+    def decode(self, ids:list[int])->str:
+        ...
+    @overload
+    def decode(self, ids:list[list[int]])->list[str]:
+        ...
+    def decode(self, ids: int | list[int] | list[list[int]]):
+        return super().decode(ids)
 
     @classmethod
     def from_directory(cls, tokenizer_dir: Path):

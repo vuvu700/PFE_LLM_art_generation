@@ -1,9 +1,11 @@
 import pickle
 import time
 import enum
-from typing import Literal
+import attrs
+from typing import Literal, Generator
 from pathlib import Path
 import holo.files
+from holo.pointers import Pointer
 from holo.profilers import Profiler, ProgressBar
 from holo.prettyFormats import prettyTime, prettyPrint
 
@@ -13,7 +15,7 @@ from torch.utils.data import DataLoader
 from .nanochat.gpt import GPT, GPTConfig, DistMuonAdamW, MuonAdamW
 from .saveManager import SavedAiTree
 
-from dataset.svg_dataset import SVGDataset
+from dataset.svg_dataset import SVGDataset, START_TOKEN, END_TOKEN
 from paths_cfg import MODELS_SAVE_DIRECTORY
 from tokenizer_pfe.tokenizer_project import Tokenizer
 from metrics.historique import Historique
@@ -29,6 +31,12 @@ class Verbose(enum.IntEnum):
     perEpoch = enum.auto()
     liveProgress = enum.auto()
     debug = enum.auto()
+
+@attrs.frozen
+class GenerationStats():
+    nb_tokens: int
+    gen_time: float
+    stop_reason: str
 
 class Model():
     __slots__ = (
@@ -346,4 +354,94 @@ class Model():
                 print(f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
                 gm = lambda metric: self.historique.get_metric_value(metric, epoch_id=epochID)
                 print(f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}")
-            
+    
+    @torch.inference_mode()
+    def __generate_internal(self, tokens:list[int], temperature:float, top_k:int|None):
+        assert isinstance(tokens, list)
+        device = self.device
+        ids = torch.tensor([tokens], dtype=torch.long, device=device) # add batch dim
+        while True:
+            if ids.size(1) > self.context_size:
+                ids = ids[:, -self.context_size:] # cut the context to the right size
+            logits = self.llm.forward(ids) # (B, T, vocab_size)
+            logits = logits[:, -1, :] # (B, vocab_size)
+            if top_k is not None and top_k > 0:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = -float('Inf')
+            if temperature > 0:
+                logits = logits / temperature
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                next_ids = torch.multinomial(probs, num_samples=1)
+            else:
+                next_ids = torch.argmax(logits, dim=-1, keepdim=True)
+            ids = torch.cat((ids, next_ids), dim=1)
+            token = next_ids.item()
+            yield token
+    
+    @torch.no_grad
+    def generate_flow(
+            self, start:None|str|list[int], decode_batch:int,
+            temperature:float, top_k:int|None, 
+            max_tokens:int|None, max_time:float|None,
+            statsPtr:Pointer[GenerationStats]|None=None)->Generator[str, None, None]:
+        """genere les tokens suivants a la volée, \
+            s'arrete tout seul a la fin d'un fichier ou aux limites données\n
+        args:
+            `start`: debut de la sequence a generer
+                None -> sequence vide (juste un token START)
+                str -> est converti en tokens
+                list[int] -> les tokens directement
+            `decode_batch`: le nombre de tokens accumulés avant de decoder
+            `temperature` et `top_k`: utilisés pour le sampling des logits
+            `max_tokens`: la limite de tokens a generer
+                int -> nombre max a ne pas depasser
+                None -> pas de limite de nombre de tokens
+            `max_time`: la limite de temps de generation
+                int -> nombre max de secondes a ne pas depasser
+                None -> pas de limite de temps
+        yield: les tokens deja decodés par batch
+        return: the reason why it stoped
+        """
+        # setup the iterator and start sequence
+        if start is None:
+            start = START_TOKEN
+        if isinstance(start, str):
+            start = self.tokenizer.encode(start)
+        tokens_generator = self.__generate_internal(
+            start, temperature=temperature, top_k=top_k)
+        # setup the vars
+        if statsPtr is None:
+            statsPtr = Pointer()
+        reason: str = "[BUG] stoped for no reason !?"
+        nb_tokens_gen: int = 0
+        start_time: float = time.perf_counter()
+        time_since_start = lambda: (time.perf_counter() - start_time)
+        tokens_buffer: list[int] = []
+        # find the end token value
+        _ = self.tokenizer.encode(END_TOKEN)
+        assert len(_) == 1
+        end_token_value: int = _[0]
+        while True:
+            if (max_tokens is not None) and (nb_tokens_gen >= max_tokens):
+                reason = "reached max_tokens"
+                break # => generated enougth tokens
+            if (max_time is not None) and (time_since_start() >= max_time):
+                reason = "reached max_time"
+                break # => enougth time spent
+            # => can predict another token
+            new_token = int(next(tokens_generator))
+            nb_tokens_gen += 1
+            if new_token == end_token_value:
+                reason = "reached END_TOKEN"
+                break # => reached the end of the generation
+            tokens_buffer.append(new_token)
+            if len(tokens_buffer) >= decode_batch:
+                # => has generated enougth tokens to yield some text
+                yield self.tokenizer.decode(tokens_buffer)
+                tokens_buffer.clear()
+        # => stoped generating (for a reason)
+        if len(tokens_buffer) > 0:
+            yield self.tokenizer.decode(tokens_buffer)
+        statsPtr.value = GenerationStats(
+            nb_tokens=nb_tokens_gen, gen_time=time_since_start(), 
+            stop_reason=reason)
