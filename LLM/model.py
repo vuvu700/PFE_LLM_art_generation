@@ -3,8 +3,8 @@ import time
 import enum
 from typing import Literal
 from pathlib import Path
-from holo.files import get_unique_name
-from holo.profilers import Profiler, RemainingTime_mean, ProgressBar
+import holo.files
+from holo.profilers import Profiler, ProgressBar
 from holo.prettyFormats import prettyTime, prettyPrint
 
 import torch
@@ -25,10 +25,10 @@ _WPatternChr = Literal["S", "L"]
 _WPattern = tuple[_WPatternChr, ...]
 
 class Verbose(enum.IntEnum):
-    disabled = 0
-    perEpoch = 1
-    liveProgress = 2
-    debug = 3
+    disabled = enum.auto()
+    perEpoch = enum.auto()
+    liveProgress = enum.auto()
+    debug = enum.auto()
 
 class Model():
     __slots__ = (
@@ -36,8 +36,8 @@ class Model():
         "_save_manager", "_prof", "__nb_epoches_done", )
     
     __TOKENIZER_NAME = "tokenizer.json" # sauvgardé 1 fois, a la racine de l'IA
-    __LLM_NAME = "llm.pkl"
-    __HISTORY_NAME = "history.json"
+    __MODEL_NAME = "model.pkl" # save dans les versions
+    __HISTORY_NAME = "history.json" # save dans les versions
     
     llm: GPT
     tokenizer: Tokenizer
@@ -45,15 +45,30 @@ class Model():
     historique: Historique
     
     def __init__(
-            self, save_name:str|None, tokenizer:Tokenizer|Path, 
+            self, save_name:str|None, tokenizer:Tokenizer|Path|None, 
             device:_Device, depth:int, head_dim:int,
             context_size:int, nb_heads_mult:float=1.0) -> None:
+        """cree un model avec un nouveau LLM non entrainé\n
+        args:
+            `save_name`: le nom utilisé pour
+                str -> utilise un nom choisit
+                None -> genere un nom auto
+            `tokenizer`: le tokenizer a utiliser
+                Tokenizer -> utilise celui ci
+                Path -> charge le tokenizer ciblé
+                None -> prends celui dans `save_name` sinon leve une erreur
+            `device`: la device ou on met le LLM
+            `depth`, `head_dim`, `context_size`, `nb_heads_mult`: les params du LLM
+        """
         ### --- save manager ---
         if save_name is None:
-            save_name = get_unique_name(MODELS_SAVE_DIRECTORY, prefix="modelAuto_")
+            save_name = holo.files.get_unique_name(
+                MODELS_SAVE_DIRECTORY, prefix="modelAuto_", onlyNumbers=True)
             print(f"used auto save name: {save_name!r}")
-        self._save_manager = ... # SavedAiTree(MODELS_SAVE_DIRECTORY.joinpath(save_name))
+        self._save_manager = SavedAiTree(MODELS_SAVE_DIRECTORY.joinpath(save_name))
         ### --- tokenizer ---
+        if tokenizer is None:
+            tokenizer = self.get_tokenizer_path()
         if isinstance(tokenizer, Path):
             tokenizer = Tokenizer.load(tokenizer)
         self.tokenizer = tokenizer
@@ -115,6 +130,18 @@ class Model():
             model_meta = GPT(config)
         return model_meta
 
+    def get_tokenizer_path(self)->Path:
+        return self._save_manager.aiDirectory.joinpath(self.__TOKENIZER_NAME)
+
+    @staticmethod
+    def clear_empty_save_dir()->None:
+        """supprime tout les dossier de Models vides"""
+        for directory in MODELS_SAVE_DIRECTORY.iterdir():
+            if not directory.is_dir():
+                continue # => not a dir
+            if holo.files.getSize(directory.as_posix()) == 0:
+                directory.rmdir()
+
     @property
     def config(self)->GPTConfig:
         return self.llm.config
@@ -139,27 +166,31 @@ class Model():
     def nb_epoches_done(self)->int:
         return self.__nb_epoches_done
     
-    def save(self, versionName:str)->tuple[int, Path]:
+    def save(self, versionName:str, replaceTokenizer:bool=True)->tuple[int, Path]:
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `versionName`: le nom de la version crée\n
+        `replaceTokenizer`: True -> overwrite le tokenizer sauvgardé
         return: (ID de la version, chemain de la version)"""
-        raise NotImplementedError("TODO: still in developement")
         ID = self._save_manager.currentNextVersion
         directory = self._save_manager.createNewVersionFolder(versionName)
-        self._save_manager.aiDirectory.joinpath()
-        # -> tokenizer
         # -> LLM & optimizer
-        with open(directory.joinpath(self.__LLM_NAME)) as file:
-            ...
+        torch.save(
+            obj={"llm": self.llm, "optimizer": self.optimizer},
+            f=directory.joinpath(self.__MODEL_NAME))
+        # -> tokenizer
+        tokenizerPath = self.get_tokenizer_path()
+        if replaceTokenizer or (not tokenizerPath.exists()):
+            self.tokenizer.save(tokenizerPath)
         # -> Historique
-        with open(directory.joinpath(self.__LLM_NAME)) as file:
-            ... 
-        
+        self.historique.save(directory.joinpath(self.__HISTORY_NAME))
         return (ID, directory)
     
     @staticmethod
     def load(ai_name:str, versionID:int)->"Model":
-        """... to fill"""
+        """sauvgarde le model dans son dossier et renvois la version cree\n
+        `ai_name`: le nom de la version crée
+        `versionID`: le numero de la version a charger
+        return: (ID de la version, chemain de la version)"""
         raise NotImplementedError("TODO: still in developement")
     
     
@@ -188,10 +219,13 @@ class Model():
             epoch_start_time = time.perf_counter()
             if verbose >= Verbose.perEpoch:
                 print(f"\nstarting epoch: {nbEpoch_done+1}")
+            memStart = torch.cuda.memory.memory_reserved()
             
             while True:
                 # clear the cache
-                torch.cuda.empty_cache()
+                memCurr = torch.cuda.memory.memory_reserved()
+                if (memCurr-memStart) > 2 * 1e9:  # using ..Go
+                    torch.cuda.memory.empty_cache()
                 # get the batch (not a for loop so we can mesure the duration of 'next')
                 with self._prof.mesure("iterDataloader"):
                     try: datas = next(batch_iterator)
@@ -228,22 +262,24 @@ class Model():
                     progress_batches.step()
                 nb_batch_done += 1
             
+            torch.cuda.memory.empty_cache()
             # => epoch finished
             nbEpoch_done += 1
             self.__nb_epoches_done += 1
+            epoch_duration = (time.perf_counter() - epoch_start_time)
             # compute the metrics
             metrics = accum.get_metrics()
             for name in metrics.keys():
                 self.historique.add_metric(name, metrics[name], epoch_id=epochID)
+            self.historique.add_metric("epoch_duration", epoch_duration, epoch_id=epochID)
+            # infos post epoches
             if verbose >= Verbose.debug:
                 prettyPrint(self._prof.pretty_totalTimes())
                 prettyPrint(accum._prof.pretty_totalTimes())
-            # infos post epoches
             if verbose >= Verbose.perEpoch:
                 progress_epoches.step()
                 if not progress_epoches.estimator.isFinished():
                     print() # step don't produce a newline
-                epoch_duration = (time.perf_counter()-epoch_start_time)
                 print(f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
                 print(f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
                 gm = lambda metric: self.historique.get_metric_value(metric, epoch_id=epochID)

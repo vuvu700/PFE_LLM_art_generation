@@ -34,6 +34,9 @@ class SavedAiTree(PrettyfyClass, PartialyFinalClass):
         self.update()
     
     def update(self)->None:
+        # ensure the main dir exist
+        if not self.aiDirectory.exists():
+            self.aiDirectory.mkdir(parents=False, exist_ok=False)
         # ensure the versions dir exist
         allVersionsDir = self.allVersionsDir
         if allVersionsDir.exists() is False:
@@ -94,6 +97,7 @@ class SavedAiTree(PrettyfyClass, PartialyFinalClass):
         versionID = self.currentNextVersion
         self.__versionsFolders[versionID] = newVersionFolder
         self.updateLatest(versionID=versionID)
+        self.__maxVersion = versionID
         return newVersionFolder
     
     def updateLatest(self, versionID:int)->Path:

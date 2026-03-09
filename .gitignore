@@ -5,6 +5,7 @@
 
 # project specific
 tokenizer_save/
+models_save/
 
 # uv related
 uv.lock
