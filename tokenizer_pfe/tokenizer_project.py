@@ -3,7 +3,10 @@ from tokenizers import Tokenizer as HFTokenizer
 from pathlib import Path
 import json
 
-SPECIAL_TOKENS = ["<|output_start|>", "<|output_end|>"]
+
+START_TOKEN = "<|output_start|>"
+END_TOKEN = "<|output_end|>"
+SPECIAL_TOKENS = [START_TOKEN, END_TOKEN]
 
 
 class Tokenizer(HuggingFaceTokenizer):

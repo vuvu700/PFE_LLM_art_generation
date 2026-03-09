@@ -1,5 +1,6 @@
 import pickle
 import time
+import enum
 from typing import Literal
 from pathlib import Path
 from holo.files import get_unique_name
@@ -22,12 +23,17 @@ from metrics.metrics import MetricsAccumulator
 _Device = Literal["cpu", "cuda"]
 _WPatternChr = Literal["S", "L"]
 _WPattern = tuple[_WPatternChr, ...]
-_Verbose = Literal["disabled", "full", "per epoch"]
+
+class Verbose(enum.IntEnum):
+    disabled = 0
+    perEpoch = 1
+    liveProgress = 2
+    debug = 3
 
 class Model():
     __slots__ = (
         "llm", "tokenizer", "optimizer", "historique", 
-        "_save_manager", "_prof", )
+        "_save_manager", "_prof", "__nb_epoches_done", )
     
     __TOKENIZER_NAME = "tokenizer.json" # sauvgardé 1 fois, a la racine de l'IA
     __LLM_NAME = "llm.pkl"
@@ -37,7 +43,6 @@ class Model():
     tokenizer: Tokenizer
     optimizer: DistMuonAdamW|MuonAdamW
     historique: Historique
-    _save_manager: SavedAiTree
     
     def __init__(
             self, save_name:str|None, tokenizer:Tokenizer|Path, 
@@ -71,8 +76,9 @@ class Model():
         #   the inputs to model will never change shape so dynamic=False is safe
         self.llm = torch.compile(self.llm, dynamic=False) # type: ignore
         ### --- others ---
+        self.__nb_epoches_done = 0
         self._prof = Profiler([
-            "verbose", "iterDataloader", "splitBatch", "toDevice",
+            "iterDataloader", "splitBatch", "toDevice",
             "forward", "metrics&loss", "zero_grad", "backward", "step"])
         
     def show_infos(self)->None:
@@ -129,6 +135,10 @@ class Model():
             f"expected a {torch.device}, got: {type(device)}"
         return device
     
+    @property
+    def nb_epoches_done(self)->int:
+        return self.__nb_epoches_done
+    
     def save(self, versionName:str)->tuple[int, Path]:
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `versionName`: le nom de la version crée\n
@@ -155,13 +165,12 @@ class Model():
     
     def train(
             self, dataset:SVGDataset, batch_size:int,
-            nbEpoches:int, timeLimite:float, verbose:_Verbose)->None:
+            nbEpoches:int, timeLimite:float, verbose:Verbose)->None:
         nbEpoch_done: int = 0
         time_start: float = time.perf_counter()
         time_since_start = lambda: (time.perf_counter()-time_start)
         progress_epoches = ProgressBar.simpleConfig(
-                nbSteps=nbEpoches, taskName="epoches", useEma=1.0,
-                updateEvery=0.0, newLineWhenFinished=False)
+                nbSteps=nbEpoches, taskName="epoches", useEma=False, updateEvery=0.0)
         # eta_epoches = RemainingTime_mean(finalAmount=nbEpoches, start=True)
         # eta_time = RemainingTime_mean(finalAmount=timeLimite, start=True)
         
@@ -173,39 +182,40 @@ class Model():
             progress_batches = ProgressBar.simpleConfig(
                 nbSteps=len(dataloader), taskName="batches", useEma=False)
             
+            epochID = self.nb_epoches_done
             batch_iterator = iter(dataloader)
             nb_batch_done: int = 0
             epoch_start_time = time.perf_counter()
-            print(f"starting epoch n°{nbEpoch_done+1}")
+            if verbose >= Verbose.perEpoch:
+                print(f"\nstarting epoch: {nbEpoch_done+1}")
             
             while True:
-                # clear teh cach
+                # clear the cache
                 torch.cuda.empty_cache()
-                # get the batch
+                # get the batch (not a for loop so we can mesure the duration of 'next')
                 with self._prof.mesure("iterDataloader"):
                     try: datas = next(batch_iterator)
                     except StopIteration:
                         break
-                # get the datas from the batch 
+                # get the datas from the batch
                 with self._prof.mesure("splitBatch"):
-                    tokens: torch.Tensor = datas["tokens"].to(torch.int64)
-                    assert isinstance(tokens, torch.Tensor)
+                    inputs: torch.Tensor = datas["tokens"]
+                    targets: torch.Tensor = datas["targets"]
                     dtIndexes: list[int] = datas["datasetIndex"].tolist()
-                    svgIndex: list[int] = datas["svgIndex"].tolist()
-                    chunckIndex: list[int] = datas["chunckIndex"].tolist()
+                    svgIndexes: list[int] = datas["svgIndex"].tolist()
+                    chunckIndexes: list[int] = datas["chunckIndex"].tolist()
                     nbChars: int = sum([len(dataset.chunks[i].text) for i in dtIndexes])
                 # send the tokens to the device
                 with self._prof.mesure("toDevice"):
-                    tokens = tokens.to(self.device)
+                    inputs = inputs.to(torch.int64).to(self.device)
+                    targets = targets.to(torch.int64).to(self.device)
                 # forward pass of the LLM
                 with self._prof.mesure("forward"):
-                    logits = self.llm.forward(idx=tokens, targets=None)
+                    logits = self.llm.forward(idx=inputs, targets=None)
                 # compute the loss and the metrics
                 with self._prof.mesure("metrics&loss"):
                     loss = accum.batch_logits_metrics(
-                        logits[:, : -1].contiguous(), 
-                        tokens[:, 1:].contiguous(),
-                        totalNbChars=nbChars)
+                        logits, targets, totalNbChars=nbChars)
                 # backward pass and step
                 with self._prof.mesure("zero_grad"):
                     self.optimizer.zero_grad()
@@ -214,20 +224,28 @@ class Model():
                 with self._prof.mesure("step"):
                     self.optimizer.step()
                 # log the infos
-                with self._prof.mesure("verbose"):
+                if verbose >= Verbose.liveProgress:
                     progress_batches.step()
                 nb_batch_done += 1
             
             # => epoch finished
-            with self._prof.mesure("verbose"):
-                progress_epoches.step(); print() # progress don't output a newline 
             nbEpoch_done += 1
-            # log some infos (temporary)
-            epoch_duration = (time.perf_counter()-epoch_start_time)
-            print()
-            print(f"performed: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
-            print(f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
-            res = accum.get_metrics()
-            prettyPrint(self._prof.pretty_totalTimes())
-            prettyPrint(accum._prof.pretty_totalTimes())
-            prettyPrint(res)
+            self.__nb_epoches_done += 1
+            # compute the metrics
+            metrics = accum.get_metrics()
+            for name in metrics.keys():
+                self.historique.add_metric(name, metrics[name], epoch_id=epochID)
+            if verbose >= Verbose.debug:
+                prettyPrint(self._prof.pretty_totalTimes())
+                prettyPrint(accum._prof.pretty_totalTimes())
+            # infos post epoches
+            if verbose >= Verbose.perEpoch:
+                progress_epoches.step()
+                if not progress_epoches.estimator.isFinished():
+                    print() # step don't produce a newline
+                epoch_duration = (time.perf_counter()-epoch_start_time)
+                print(f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
+                print(f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
+                gm = lambda metric: self.historique.get_metric_value(metric, epoch_id=epochID)
+                print(f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}")
+            

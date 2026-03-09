@@ -1,11 +1,15 @@
 import numpy
 from typing import Callable, TypedDict
-from torch.utils.data import Dataset
 from pathlib import Path
 import attrs
 from lxml import etree  # type: ignore
 
-_Tokens = numpy.ndarray[tuple[int], numpy.dtype[numpy.int32]]
+from torch.utils.data import Dataset
+
+from tokenizer_pfe.tokenizer_project import START_TOKEN, END_TOKEN
+
+
+_Tokens = numpy.ndarray[tuple[int, ...], numpy.dtype[numpy.int32]]
 """works like a list of tokens"""
 IGNORE_INDEX = -1
 
@@ -38,8 +42,10 @@ class ChunckInfos():
 
 @attrs.frozen
 class DatasetChunck():
-    tokens: _Tokens
-    """tokens du chunck"""
+    tokensInput: _Tokens
+    """tokens du chunck en input du LLM"""
+    tokensOutput: _Tokens
+    """tokens du chunck en output du LLM"""
     text: str
     """le text initial associé au tokens du chunk"""
     indexes: ChunckInfos
@@ -48,6 +54,7 @@ class DatasetChunck():
 
 class BatchDatas(TypedDict):
     tokens: _Tokens
+    targets: _Tokens
     datasetIndex: int
     svgIndex: int
     chunckIndex: int
@@ -80,9 +87,9 @@ def chunk_tokens(tokens: list[int], context_size: int) -> list[_Tokens]:
         end = start + context_size
         if start >= len(tokens):
             break  # plus de tokens à couvrir
-        chunk = numpy.asarray(tokens[start: end], dtype=numpy.int32)
+        chunk = numpy.asarray(tokens[start: end+1], dtype=numpy.int32)
         assert chunk.ndim == 1
-        chunks.append(chunk)  # type: ignore -> alredy checked the dim
+        chunks.append(chunk)
         i += 1
     return chunks
 
@@ -107,14 +114,31 @@ class SVGDataset(Dataset):
         self.samples = load_svg_samples(svg_dir)
 
         for svg_index, sample in enumerate(self.samples):
-            tokens = self.tokenizer(sample.txt)
+            # add the start and stop tokens
+            # 2xStop => LLM learn that "Stop -> Stop"
+            tokens = self.tokenizer("".join([
+                START_TOKEN, sample.txt, END_TOKEN, END_TOKEN]))
             svg_chunks = chunk_tokens(tokens, context_size)
-            for chunck_index, token_chunk in enumerate(svg_chunks):
+            del tokens, sample
+            for chunck_index, tokensInOut in enumerate(svg_chunks):
+                tokensInOut_raw = tokensInOut
+                # add padding at the end if needed (to size: context+1)
+                nbMissingTokens: int = (self.context_size+1 - len(tokensInOut))
+                assert nbMissingTokens >= 0, \
+                    f"[BUG] unexpected chunck size: {len(tokensInOut)} ({self.context_size+1=})"
+                if self.fillMissingTokens and (nbMissingTokens > 0):
+                    # => fill the missing tokens with IGNORE_INDEX (=> will be ignored)
+                    tokensInOut = numpy.concat([
+                        tokensInOut, 
+                        numpy.full((nbMissingTokens, ), IGNORE_INDEX, dtype=numpy.int32)
+                    ], axis=0)
+                del nbMissingTokens
+                # save the chunck
                 self.chunks.append(DatasetChunck(
-                    tokens=token_chunk,
-                    text=self.decoder(token_chunk.tolist()),
+                    tokensInput=tokensInOut[: -1], tokensOutput=tokensInOut[1: ],
+                    text=self.decoder(tokensInOut_raw[: -1].tolist()), # no padding
                     indexes=ChunckInfos(
-                        datasetIndex=len(self.chunks),
+                        datasetIndex=len(self.chunks), 
                         svgIndex=svg_index,
                         chunckIndex=chunck_index)
                 ))
@@ -125,16 +149,9 @@ class SVGDataset(Dataset):
     def __getitem__(self, idx: int) -> BatchDatas:
         ch = self.chunks[idx]
         indexes = ch.indexes
-        tokens: _Tokens = ch.tokens
-        nbMissingTokens: int = self.context_size - len(tokens) 
-        assert nbMissingTokens >= 0, \
-            f"[BUG] unexpected chunck size: {len(tokens)} ({self.context_size=})"
-        if self.fillMissingTokens and (len(tokens) < self.context_size):
-            # => fill the missing tokens with -1 (=> will be ignored)
-            filler = numpy.full((nbMissingTokens, ), IGNORE_INDEX, dtype=numpy.int32)
-            tokens = numpy.concat([tokens, filler], axis=0) # type: ignore
         return BatchDatas(
-            tokens=tokens,
+            tokens=ch.tokensInput,
+            targets=ch.tokensOutput,
             datasetIndex=indexes.datasetIndex,
             svgIndex=indexes.svgIndex,
             chunckIndex=indexes.chunckIndex)
