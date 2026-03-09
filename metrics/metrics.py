@@ -77,7 +77,7 @@ il faut reconstituer des fichiers a partir des fragments generés
         - "[": premiere moitiée du chunk (non conservés)
         - "#": seconde moitiée du chunck (la partie conservée)
 """
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 from pathlib import Path
 from lxml import etree # type: ignore
 import math
@@ -88,7 +88,8 @@ import torch
 import torch as nn
 import torch.nn.functional as F
 
-from LLM.model import Model
+if TYPE_CHECKING:
+    from LLM.model import Model
 from dataset.svg_dataset import IGNORE_INDEX
 
 ############################# metrics accumulator #############################
@@ -208,7 +209,7 @@ class MetricsAccumulator():
 ############################# other metrics functions #############################
 
 
-def get_learning_rates(model:Model):
+def get_learning_rates(model:"Model"):
     names = [
         "lm_head", "embedding",  "value_embeds", "residuals", "x0", 
         ] + [f"transformers_grp_{i}" for i in range(4)]

@@ -26,3 +26,5 @@ TOKENIZER_SAVE_DIRECTORY = joinAndEnsure(
     CURRENT_DIRECTORY, os.getenv('TOKENIZER_SAVE_DIRECTORY', default="tokenizer_save"))
 HISTORIQUE_SAVE_DIRECTORY = joinAndEnsure(
     CURRENT_DIRECTORY, os.getenv('HISTORIQUE_SAVE_DIRECTORY', default="historique_save"))
+MODELS_SAVE_DIRECTORY = joinAndEnsure(
+    CURRENT_DIRECTORY, os.getenv('MODELS_SAVE_DIRECTORY', default="models_save"))
