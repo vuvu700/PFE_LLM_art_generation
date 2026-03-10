@@ -67,7 +67,7 @@ def clean_svg(svg: str) -> str:
 
 def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
     svg_samples: list[SVGSample] = []
-    for svg_file in Path(svg_dir).glob('*.svg'):
+    for svg_file in sorted(Path(svg_dir).glob('*.svg')):
         with open(svg_file, 'r', encoding='utf-8') as f:
             svg_content = f.read()
             cleaned_svg = clean_svg(svg_content)
