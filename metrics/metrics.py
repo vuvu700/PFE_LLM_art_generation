@@ -3,23 +3,23 @@ methodes to compute the metrics that are used to evaluate the LLM
 
 for the training we will mesure the following metrics:
  - related to the logits:
-    - CrossEntropy (CE) [TRAIN] (todo)
+    - CrossEntropy (CE) [TRAIN] (done)
         quantifies how uncertain a language model is when predicting the next token in a sequence. 
         (Sensitivity to outliers, depends on the tokenizer)
-    - Perplexity (PPL) [TRAIN] (todo)
+    - Perplexity (PPL) [TRAIN] (done)
         like CE, quantifies uncertainty of the next token 
         -> interpreted as the effective number of choices the model has for the next token, averaged over the sequence.
         (Sensitivity to outliers, depends on the tokenizer)
-    - Bit-Per-Character (BPC) [TRAIN] (todo)
+    - Bit-Per-Character (BPC) [TRAIN] (done)
         quantifies uncertainty of the next character (in text)
         (Sensitivity to outliers, INDEPENDENT of the tokenizer)
         formula = lossCE * NbTokens / (NbCharsInText * log(2))
     NOTE: CE and PPL will also be calculated as CE2 and PPL2 with target = argmax(logits)
-    - Prediction Entropy (ENTROPY) [TRAIN + EVAL] (todo)
+    - Prediction Entropy (ENTROPY) [TRAIN + EVAL] (done)
         formula H = -sum(p_i*log(p_i) for i in range(vocab)), with p the proba distrib
-    - logits standard deviation (LOGITS_SD) [TRAIN] (todo)
+    - logits standard deviation (LOGITS_SD) [TRAIN] (done)
         the mean SD of the logits (use the dim of the vocab for sd)
-    - top-1 & top-k accuracy (TOP-1, TOP-K) [TRAIN] (todo)
+    - top-1 & top-k accuracy (TOP-1, TOP-K) [TRAIN] (done)
         mesure si le token de la target est dans le top K
 
  - language:
@@ -35,13 +35,13 @@ for the training we will mesure the following metrics:
         mesure the gradient of each batch (before croping)
     - Learning Rate (LR) [TRAIN] (done)
         it migth change during training with some scheduling
-    - generated size (SIZE_AVG, SIZE_SD) [EVAL] (todo)
+    - generated size (SIZE_AVG, SIZE_SD) [EVAL] (later)
         track the average size (and its SD) of the generated files 
         
  - sur la validité du fichier:
     (pour le TRAIN, se base sur les SVG reconstitués)
     (pour le TEST, se baser sur le SVG final generé)
-    - Well-formedness rate (XML_VALIDITY) [TRAIN + EVAL] (done)
+    - Well-formedness rate (XML_VALIDITY) [TRAIN + EVAL] (todo)
         % de sorties qui sont du XML valide (parse sans erreur).
     - SVG validity rate (SVG_VALIDITY) [TRAIN + EVAL] (later)
         % de sorties acceptées par un renderer SVG (ex : navigateur, librsvg).
