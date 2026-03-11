@@ -1,4 +1,6 @@
 import pickle
+import uuid
+import copy
 import time
 import enum
 import attrs
@@ -8,6 +10,7 @@ import holo.files
 from holo.pointers import Pointer
 from holo.profilers import Profiler, ProgressBar
 from holo.prettyFormats import prettyTime, prettyPrint
+from holo.parallel import Manager as ThreadsManager
 
 import torch
 from torch.utils.data import DataLoader
@@ -20,11 +23,13 @@ from paths_cfg import MODELS_SAVE_DIRECTORY
 from tokenizer_pfe.tokenizer_project import Tokenizer
 from metrics.historique import Historique
 from metrics.metrics import MetricsAccumulator
+from metrics.affichage import affiche_metrics
 
 
 _Device = Literal["cpu", "cuda"]
 _WPatternChr = Literal["S", "L"]
 _WPattern = tuple[_WPatternChr, ...]
+
 
 class Verbose(enum.IntEnum):
     disabled = enum.auto()
@@ -32,31 +37,50 @@ class Verbose(enum.IntEnum):
     liveProgress = enum.auto()
     debug = enum.auto()
 
+
 @attrs.frozen
 class GenerationStats():
     nb_tokens: int
     gen_time: float
     stop_reason: str
 
+
+@attrs.define
+class Wandb_run_config():
+    run_name: str
+    run_id: str
+
+    @staticmethod
+    def fromName(name: str) -> "Wandb_run_config":
+        return Wandb_run_config(
+            run_name=name,
+            run_id=Wandb_run_config.genID())
+
+    @staticmethod
+    def genID() -> str:
+        return str(uuid.uuid4())
+
+
 class Model():
     __slots__ = (
-        "llm", "tokenizer", "optimizer", "historique", 
-        "_save_manager", "_prof", "__nb_epoches_done", )
-    
-    __TOKENIZER_NAME = "tokenizer.json" # sauvgardé 1 fois, a la racine de l'IA
-    __MODEL_NAME = "model.pkl" # save dans les versions
-    __HISTORY_NAME = "history.json" # save dans les versions
-    __METADATAS_NAME = "metadatas.pkl" # save dans les versions
-    
+        "llm", "tokenizer", "optimizer", "historique",
+        "_save_manager", "_prof", "__nb_epoches_done",
+        "_wandb_config", )
+
+    __TOKENIZER_NAME = "tokenizer.json"  # sauvgardé 1 fois, a la racine de l'IA
+    __MODEL_NAME = "model.pkl"  # save dans les versions
+    __HISTORY_NAME = "history.json"  # save dans les versions
+    __METADATAS_NAME = "metadatas.pkl"  # save dans les versions
+
     llm: GPT
     tokenizer: Tokenizer
-    optimizer: DistMuonAdamW|MuonAdamW
+    optimizer: DistMuonAdamW | MuonAdamW
     historique: Historique
-    
+
     def __init__(
-            self, save_name:str|None, tokenizer:Tokenizer|Path|None, 
-            device:_Device, depth:int, head_dim:int,
-            context_size:int, nb_heads_mult:float=1.0) -> None:
+            self, save_name: str | None, tokenizer: Tokenizer | Path | None,
+            device: _Device, depth: int, head_dim: int,
+            context_size: int, nb_heads_mult: float = 1.0) -> None:
         """cree un model avec un nouveau LLM non entrainé\n
         args:
             `save_name`: le nom utilisé pour
@@ -69,21 +93,22 @@ class Model():
             `device`: la device ou on met le LLM
             `depth`, `head_dim`, `context_size`, `nb_heads_mult`: les params du LLM
         """
-        ### --- save manager ---
+        # --- save manager ---
         if save_name is None:
             save_name = holo.files.get_unique_name(
                 MODELS_SAVE_DIRECTORY, prefix="modelAuto_", onlyNumbers=True)
             print(f"used auto save name: {save_name!r}")
-        self._save_manager = SavedAiTree(MODELS_SAVE_DIRECTORY.joinpath(save_name))
-        ### --- tokenizer ---
+        self._save_manager = SavedAiTree(
+            MODELS_SAVE_DIRECTORY.joinpath(save_name))
+        # --- tokenizer ---
         if tokenizer is None:
             tokenizer = self.get_tokenizer_path()
         if isinstance(tokenizer, Path):
             tokenizer = Tokenizer.load(tokenizer)
         self.tokenizer = tokenizer
-        ### --- historique ---
+        # --- historique ---
         self.historique = Historique()
-        ### --- LLM & optimizer---
+        # --- LLM & optimizer---
         self.llm = self.__build_model_meta(
             depth=depth, head_dim=head_dim, nb_heads_mult=nb_heads_mult,
             vocab_size=self.vocab_size, effective_sequence_size=context_size,
@@ -98,35 +123,37 @@ class Model():
         self.llm = self.llm.bfloat16()
         # -> compile the LLM
         #   the inputs to model will never change shape so dynamic=False is safe
-        self.llm = torch.compile(self.llm, dynamic=False) # type: ignore
-        ### --- others ---
+        self.llm = torch.compile(self.llm, dynamic=False)  # type: ignore
+        # --- others ---
         self.__nb_epoches_done = 0
+        self._wandb_config = Wandb_run_config.fromName(save_name)
         self._prof = Profiler([
             "iterDataloader", "splitBatch", "toDevice",
             "forward", "metrics&loss", "zero_grad", "backward", "step"])
-        
-    def show_infos(self)->None:
+
+    def show_infos(self) -> None:
         print(self.config)
         params = self.llm.num_scaling_params()
         params_Embed = (params['wte'] + params['value_embeds'])
         print(f"{params['total']:_d} total params "
-            f"(embeding: {params_Embed:_d} | "
-            f"last layer: {params['lm_head']:_d} | "
-            f"transformer: {params['transformer_matrices']:_d})")
-        print(f"on device: {self.device!r}, with effective context_size: {self.context_size}")
-    
+              f"(embeding: {params_Embed:_d} | "
+              f"last layer: {params['lm_head']:_d} | "
+              f"transformer: {params['transformer_matrices']:_d})")
+        print(
+            f"on device: {self.device!r}, with effective context_size: {self.context_size}")
+
     @staticmethod
     def __build_model_meta(
-            depth:int, head_dim:int, nb_heads_mult:float, 
-            vocab_size:int, effective_sequence_size:int, 
-            window_pattern:_WPattern)->GPT:
+            depth: int, head_dim: int, nb_heads_mult: float,
+            vocab_size: int, effective_sequence_size: int,
+            window_pattern: _WPattern) -> GPT:
         """Build a model on meta device for a given depth (shapes/dtypes only, no data)."""
-        ### cette fonction a été adaptée depuis 
+        # cette fonction a été adaptée depuis
         #   la demo de nonoChat, les constantes y sont issues aussi
         # Model dim is nudged up to nearest multiple of head_dim for clean division
         # (FA3 requires head_dim divisible by 8, and this guarantees head_dim == args.head_dim exactly)
         aspect_ratio = 10.5 * nb_heads_mult
-        max_seq_len = 2 * effective_sequence_size 
+        max_seq_len = 2 * effective_sequence_size
         # -> allow big speed boost when using < half of `max_seq_len`
         base_dim = depth * aspect_ratio
         model_dim = int(((base_dim + head_dim - 1) // head_dim) * head_dim)
@@ -139,43 +166,61 @@ class Model():
             model_meta = GPT(config)
         return model_meta
 
-    def get_tokenizer_path(self)->Path:
+    def get_tokenizer_path(self) -> Path:
         return self._save_manager.aiDirectory.joinpath(self.__TOKENIZER_NAME)
 
     @staticmethod
-    def clear_empty_save_dir()->None:
+    def clear_empty_save_dir() -> None:
         """supprime tout les dossier de Models vides"""
         for directory in MODELS_SAVE_DIRECTORY.iterdir():
             if not directory.is_dir():
-                continue # => not a dir
+                continue  # => not a dir
             if holo.files.getSize(directory.as_posix()) == 0:
                 directory.rmdir()
 
     @property
-    def config(self)->GPTConfig:
+    def config(self) -> GPTConfig:
         return self.llm.config
 
     @property
-    def vocab_size(self)->int:
+    def vocab_size(self) -> int:
         return self.tokenizer.get_vocab_size()
-    
+
     @property
-    def context_size(self)->int:
+    def context_size(self) -> int:
         """recomanded context size to use"""
         return (self.config.sequence_len // 2)
 
     @property
-    def device(self)->torch.device:
+    def device(self) -> torch.device:
         device = self.llm.get_device()
         assert isinstance(device, torch.device), \
             f"expected a {torch.device}, got: {type(device)}"
         return device
-    
+
     @property
-    def nb_epoches_done(self)->int:
+    def nb_epoches_done(self) -> int:
         return self.__nb_epoches_done
-    
-    def save(self, versionName:str, replaceTokenizer:bool=True)->tuple[int, Path]:
+
+    def wandb_show_metrics(self, join: bool) -> None:
+        """affiche les metrics du model sur wandb\n
+        si la run n'existe pas, en crée une nouvelle, sinon update celle deja existante\n
+        ATTENTION: la fonction s'execute de façon asyncrone donc l'update peut metre du temps \
+            néanmoins l'historique du model peut etre modifié sans risque pendent ce temps la\n
+        args:
+            `join`: True -> attend la fin de l'affichage avant de return
+                False -> return imediatement aprés avoir commencé l'affichage (instantané)"""
+        # TODO: decomenter ce code une fois que affiche_metrics est implementé
+        # manager = ThreadsManager(nbWorkers=1, startPaused=False)
+        # manager.addWork(
+        #    func=affiche_metrics,
+        #    historique=copy.deepcopy(self.historique),
+        #    run_name=self._wandb_config.run_name,
+        #    run_ID=self._wandb_config.run_id) # type: ignore
+        # if join is True:
+        #    manager.join()
+
+    def save(self, versionName: str, replaceTokenizer: bool = True) -> tuple[int, Path]:
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `versionName`: le nom de la version crée\n
         `replaceTokenizer`: True -> overwrite le tokenizer sauvgardé
@@ -202,9 +247,9 @@ class Model():
                 "llm_config": self.config}
             pickle.dump(metadatas, file)
         return (ID, directory)
-    
+
     @staticmethod
-    def load(ai_name:str, versionID:int, device:torch.device)->"Model":
+    def load(ai_name: str, versionID: int, device: torch.device) -> "Model":
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `ai_name`: le nom de la version crée
         `versionID`: le numero de la version a charger
@@ -217,30 +262,33 @@ class Model():
         model = object.__new__(Model)
         model._save_manager = tree
         # -> tokenizer
-        model.tokenizer = Tokenizer.load(AI_Folder.joinpath(Model.__TOKENIZER_NAME))
+        model.tokenizer = Tokenizer.load(
+            AI_Folder.joinpath(Model.__TOKENIZER_NAME))
         # -> metadatas
         with open(version_dir.joinpath(Model.__METADATAS_NAME), mode="rb") as file:
-            metadatas = pickle.load(file)
+            metadatas: dict = pickle.load(file)
             model._prof = metadatas["prof"]
             model.__nb_epoches_done = metadatas["nb_epoch_done"]
             config_datas = metadatas["llm_config"]
+        # generate a new wandb ID to avoid any conflicts
+        model._wandb_config = Wandb_run_config.fromName(ai_name)
         # -> history
-        model.historique = Historique.load(version_dir.joinpath(Model.__HISTORY_NAME))
+        model.historique = Historique.load(
+            version_dir.joinpath(Model.__HISTORY_NAME))
         # -> LLM & optimizer
         model_data: dict = torch.load(
             version_dir.joinpath(Model.__MODEL_NAME), map_location=device)
         # -> rebuild the model
         model.__rebuild_LLM(
-            llm_datas=model_data["llm"], 
-            optim_datas=model_data["optimizer"], 
-            config=config_datas, 
+            llm_datas=model_data["llm"],
+            optim_datas=model_data["optimizer"],
+            config=config_datas,
             device=device)
         return model
-        
-    
+
     def __rebuild_LLM(
-            self, llm_datas:dict, optim_datas:dict, 
-            config:GPTConfig, device:torch.device)->None:
+            self, llm_datas: dict, optim_datas: dict,
+            config: GPTConfig, device: torch.device) -> None:
         """utilitaire a appeler aprés avoir load un model\n
         principalement repris de nanochat.checkpoint_manager.build_model"""
         assert isinstance(config, GPTConfig)
@@ -249,32 +297,32 @@ class Model():
             llm_datas = {
                 k: v.float() if v.dtype == torch.bfloat16 else v
                 for k, v in llm_datas.items()}
-        llm_datas = {k.removeprefix("_orig_mod."): v for k, v in llm_datas.items()}
+        llm_datas = {k.removeprefix("_orig_mod."): v
+                     for k, v in llm_datas.items()}
         with torch.device("meta"):
             llm = GPT(config)
         # Load the model state
         llm.to_empty(device=device)
-        llm.init_weights() # note: this is dumb, but we need to init the rotary embeddings. TODO: fix model re-init
+        # note: this is dumb, but we need to init the rotary embeddings. TODO: fix model re-init
+        llm.init_weights()
         llm.load_state_dict(llm_datas, strict=True, assign=True)
         optim = llm.setup_optimizer()
         optim.load_state_dict(optim_datas)
         # set the llm and optimizer on self
-        self.llm = torch.compile(llm, dynamic=False) # type: ignore
+        self.llm = torch.compile(llm, dynamic=False)  # type: ignore
         self.optimizer = optim
-        
-    
-    
+
     def train(
-            self, dataset:SVGDataset, batch_size:int,
-            nbEpoches:int, timeLimite:float, verbose:Verbose)->None:
+            self, dataset: SVGDataset, batch_size: int,
+            nbEpoches: int, timeLimite: float, verbose: Verbose) -> None:
         nbEpoch_done: int = 0
         time_start: float = time.perf_counter()
-        time_since_start = lambda: (time.perf_counter()-time_start)
+        def time_since_start(): return (time.perf_counter()-time_start)
         progress_epoches = ProgressBar.simpleConfig(
-                nbSteps=nbEpoches, taskName="epoches", useEma=False, updateEvery=0.0)
+            nbSteps=nbEpoches, taskName="epoches", useEma=False, updateEvery=0.0)
         # eta_epoches = RemainingTime_mean(finalAmount=nbEpoches, start=True)
         # eta_time = RemainingTime_mean(finalAmount=timeLimite, start=True)
-        
+
         while (nbEpoch_done < nbEpoches) and (time_since_start() < timeLimite):
             # => can do another epoch
             dataloader = DataLoader(
@@ -282,7 +330,7 @@ class Model():
             accum = MetricsAccumulator(usage="train", topK=5)
             progress_batches = ProgressBar.simpleConfig(
                 nbSteps=len(dataloader), taskName="batches", useEma=False)
-            
+
             epochID = self.nb_epoches_done
             batch_iterator = iter(dataloader)
             nb_batch_done: int = 0
@@ -290,7 +338,7 @@ class Model():
             if verbose >= Verbose.perEpoch:
                 print(f"\nstarting epoch: {nbEpoch_done+1}")
             memStart = torch.cuda.memory.memory_reserved()
-            
+
             while True:
                 # clear the cache
                 memCurr = torch.cuda.memory.memory_reserved()
@@ -298,7 +346,8 @@ class Model():
                     torch.cuda.memory.empty_cache()
                 # get the batch (not a for loop so we can mesure the duration of 'next')
                 with self._prof.mesure("iterDataloader"):
-                    try: datas = next(batch_iterator)
+                    try:
+                        datas = next(batch_iterator)
                     except StopIteration:
                         break
                 # get the datas from the batch
@@ -308,7 +357,8 @@ class Model():
                     dtIndexes: list[int] = datas["datasetIndex"].tolist()
                     svgIndexes: list[int] = datas["svgIndex"].tolist()
                     chunckIndexes: list[int] = datas["chunckIndex"].tolist()
-                    nbChars: int = sum([len(dataset.chunks[i].text) for i in dtIndexes])
+                    nbChars: int = sum([len(dataset.chunks[i].text)
+                                       for i in dtIndexes])
                 # send the tokens to the device
                 with self._prof.mesure("toDevice"):
                     inputs = inputs.to(torch.int64).to(self.device)
@@ -331,7 +381,7 @@ class Model():
                 if verbose >= Verbose.liveProgress:
                     progress_batches.step()
                 nb_batch_done += 1
-            
+
             torch.cuda.memory.empty_cache()
             # => epoch finished
             nbEpoch_done += 1
@@ -340,8 +390,11 @@ class Model():
             # compute the metrics
             metrics = accum.get_metrics()
             for name in metrics.keys():
-                self.historique.add_metric(name, metrics[name], epoch_id=epochID)
-            self.historique.add_metric("epoch_duration", epoch_duration, epoch_id=epochID)
+                self.historique.add_metric(
+                    name, metrics[name], epoch_id=epochID)
+            self.historique.add_metric(
+                "epoch_duration", epoch_duration, epoch_id=epochID)
+            self.wandb_show_metrics(join=False)
             # infos post epoches
             if verbose >= Verbose.debug:
                 prettyPrint(self._prof.pretty_totalTimes())
@@ -349,22 +402,29 @@ class Model():
             if verbose >= Verbose.perEpoch:
                 progress_epoches.step()
                 if not progress_epoches.estimator.isFinished():
-                    print() # step don't produce a newline
-                print(f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
-                print(f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
-                gm = lambda metric: self.historique.get_metric_value(metric, epoch_id=epochID)
-                print(f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}")
-    
+                    print()  # step don't produce a newline
+                print(
+                    f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
+                print(
+                    f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
+
+                def gm(metric): return self.historique.get_metric_value(
+                    metric, epoch_id=epochID)
+                print(
+                    f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}")
+
     @torch.inference_mode()
-    def __generate_internal(self, tokens:list[int], temperature:float, top_k:int|None):
+    def __generate_internal(self, tokens: list[int], temperature: float, top_k: int | None):
         assert isinstance(tokens, list)
         device = self.device
-        ids = torch.tensor([tokens], dtype=torch.long, device=device) # add batch dim
+        ids = torch.tensor([tokens], dtype=torch.long,
+                           device=device)  # add batch dim
         while True:
             if ids.size(1) > self.context_size:
-                ids = ids[:, -self.context_size:] # cut the context to the right size
-            logits = self.llm.forward(ids) # (B, T, vocab_size)
-            logits = logits[:, -1, :] # (B, vocab_size)
+                # cut the context to the right size
+                ids = ids[:, -self.context_size:]
+            logits = self.llm.forward(ids)  # (B, T, vocab_size)
+            logits = logits[:, -1, :]  # (B, vocab_size)
             if top_k is not None and top_k > 0:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
                 logits[logits < v[:, [-1]]] = -float('Inf')
@@ -377,13 +437,13 @@ class Model():
             ids = torch.cat((ids, next_ids), dim=1)
             token = next_ids.item()
             yield token
-    
+
     @torch.no_grad
     def generate_flow(
-            self, start:None|str|list[int], decode_batch:int,
-            temperature:float, top_k:int|None, 
-            max_tokens:int|None, max_time:float|None,
-            statsPtr:Pointer[GenerationStats]|None=None)->Generator[str, None, None]:
+            self, start: None | str | list[int], decode_batch: int,
+            temperature: float, top_k: int | None,
+            max_tokens: int | None, max_time: float | None,
+            statsPtr: Pointer[GenerationStats] | None = None) -> Generator[str, None, None]:
         """genere les tokens suivants a la volée, \
             s'arrete tout seul a la fin d'un fichier ou aux limites données\n
         args:
@@ -415,7 +475,7 @@ class Model():
         reason: str = "[BUG] stoped for no reason !?"
         nb_tokens_gen: int = 0
         start_time: float = time.perf_counter()
-        time_since_start = lambda: (time.perf_counter() - start_time)
+        def time_since_start(): return (time.perf_counter() - start_time)
         tokens_buffer: list[int] = []
         # find the end token value
         _ = self.tokenizer.encode(END_TOKEN)
@@ -424,16 +484,16 @@ class Model():
         while True:
             if (max_tokens is not None) and (nb_tokens_gen >= max_tokens):
                 reason = "reached max_tokens"
-                break # => generated enougth tokens
+                break  # => generated enougth tokens
             if (max_time is not None) and (time_since_start() >= max_time):
                 reason = "reached max_time"
-                break # => enougth time spent
+                break  # => enougth time spent
             # => can predict another token
             new_token = int(next(tokens_generator))
             nb_tokens_gen += 1
             if new_token == end_token_value:
                 reason = "reached END_TOKEN"
-                break # => reached the end of the generation
+                break  # => reached the end of the generation
             tokens_buffer.append(new_token)
             if len(tokens_buffer) >= decode_batch:
                 # => has generated enougth tokens to yield some text
@@ -443,5 +503,5 @@ class Model():
         if len(tokens_buffer) > 0:
             yield self.tokenizer.decode(tokens_buffer)
         statsPtr.value = GenerationStats(
-            nb_tokens=nb_tokens_gen, gen_time=time_since_start(), 
+            nb_tokens=nb_tokens_gen, gen_time=time_since_start(),
             stop_reason=reason)
