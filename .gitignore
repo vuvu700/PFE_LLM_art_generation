@@ -6,6 +6,7 @@
 # project specific
 tokenizer_save/
 models_save/
+experiments/codes/wandb
 
 # uv related
 uv.lock
