@@ -16,7 +16,11 @@ def joinAndEnsure(src:"str|Path", *other:"str|Path")->Path:
 
 
 CURRENT_DIRECTORY = Path(__file__).parent
-OUR_DATASET_DIRECTORY = CURRENT_DIRECTORY.joinpath("dataset/samples/")
+OUR_DATASET_DIRECTORY = CURRENT_DIRECTORY.joinpath("dataset/samples_100/")
+OUR_DATASET_DIRECTORY_2 = CURRENT_DIRECTORY.joinpath("dataset/samples_500/")
+OUR_DATASET_DIRECTORY_3 = CURRENT_DIRECTORY.joinpath("dataset/samples_1000/")
+
+
 
 ### logs
 LOGS_DIRECTORY = joinAndEnsure(CURRENT_DIRECTORY, "logs")
