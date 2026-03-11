@@ -63,8 +63,13 @@ class Historique():
             data = json.load(f)
 
         historique = cls()
-        historique.informations = data.get("informations", {})
-        historique.commentaries = defaultdict(
-            list, data.get("commentaries", {}))
+
+        for metric, values in data.get("informations", {}).items():
+            historique.informations[metric] = {}
+            for epoch, value in values.items():
+                historique.informations[metric][int(epoch)] = value
+        
+        for epoch, comments in data.get("commentaries", {}).items():
+            historique.commentaries[int(epoch)] = comments
 
         return historique
