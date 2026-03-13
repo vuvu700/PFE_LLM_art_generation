@@ -395,6 +395,7 @@ class Model():
             self.historique.add_metric(
                 "epoch_duration", epoch_duration, epoch_id=epochID)
             self.wandb_show_metrics(join=False)
+            self.save(f"checkpoint-{self.__nb_epoches_done}")
             # infos post epoches
             if verbose >= Verbose.debug:
                 prettyPrint(self._prof.pretty_totalTimes())
