@@ -130,7 +130,7 @@ class SVGDataset(Dataset):
         tokenizer: Callable[[str], list[int]] = DEFAULT_TOKENIZER,
         decoder: Callable[[list[int]], str] = DEFAULT_DECODER,
         fillMissingTokens:bool=True,
-        use_gcode: bool = True,
+        use_gcode: bool = False,
         use_relative_gcode: bool = False,   
     ):
         assert context_size % 2 == 0, \
