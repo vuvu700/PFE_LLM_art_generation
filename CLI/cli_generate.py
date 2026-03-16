@@ -57,7 +57,6 @@ def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: 
         print(txt, end="", flush=True)
 
     print("start: \n",start)
-    results.insert(0, start)
     print(colored(statsPtr.value, "blue"))
     print(colored(f" -> {statsPtr.value.nb_tokens / statsPtr.value.gen_time:.2f} tokens/sec", "blue"))
     print("".join(results))
