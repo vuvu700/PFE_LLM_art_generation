@@ -1,6 +1,5 @@
 
 from pathlib import Path
-import torch, gc
 from termcolor import colored
 import colorama
 colorama.init()
@@ -8,11 +7,11 @@ colorama.init()
 from argparse import ArgumentParser
 from datetime import datetime
 
-from holo.prettyFormats import prettyTime
+from holo.prettyFormats import prettyTime, SingleLinePrinter
 from holo.pointers import Pointer
 
-from dataset import svg_dataset
-from LLM.model import Model, GenerationStats
+from paths_cfg import GENERATIONS_DIRECTORY
+
 
 def generate_cli(dataset_path: Path, save_generate: str, model_name: str, version_ID: int, N_start: int | None, time_limit: int | None, top_k: int | None, max_tokens: int | None):
     '''
@@ -38,7 +37,7 @@ def generate_cli(dataset_path: Path, save_generate: str, model_name: str, versio
         del model # type: ignore
         torch.cuda.empty_cache()
     except Exception: pass
-    model = Model.load(model_name, versionID=version_ID, device=torch.device("cuda:0"))
+    model = Model.load(model_name, versionID=version_ID, device=torch.device("cuda:0"), compile=False)
     model.show_infos()
 
     print(f"trained for {model.nb_epoches_done} epoches")
@@ -59,34 +58,44 @@ def generate_cli(dataset_path: Path, save_generate: str, model_name: str, versio
     else:
         start = None
 
+    print(colored("start generating", "blue"))
     statsPtr: Pointer[GenerationStats] = Pointer()
-    save_generate_path = Path("repository_svg") / save_generate
+    save_generate_path = GENERATIONS_DIRECTORY / save_generate
     with open(save_generate_path, "w") as f:
+        singleLine = SingleLinePrinter(None)
         if start is not None:
             f.write(start)
 
         for txt in model.generate_flow(
-                start=start, decode_batch=256, temperature=1.0, top_k=top_k, 
+                start=start, decode_batch=64, temperature=1.0, top_k=top_k,
                 max_tokens=max_tokens, max_time=time_limit, statsPtr=statsPtr):
             f.write(txt)
-
-    print("start: \n",start)
-    print(colored(statsPtr.value, "blue"))
+            
+            singleLine.print(
+                f"progress: {statsPtr.value.nb_tokens:_d} tokens generated "
+                f"(running for {prettyTime(statsPtr.value.gen_time)})")
+        singleLine.newline()
+    
+    print(colored(f"finished generating ({statsPtr.value.stop_reason})", "green"))
     print(colored(f" -> {statsPtr.value.nb_tokens / statsPtr.value.gen_time:.2f} tokens/sec", "blue"))
  
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generating Model")
-    parser.add_argument('--dataset_path', type=Path,  help="Chemin du dataset")
-    parser.add_argument('--save_generate', type=str,  help="Non du fichier svg que l'on veut sauvegarder (dans le dossier repository_svg)")
-    parser.add_argument('--model_name', type=str, help="nom du model a load")
-    parser.add_argument('--version_ID', type=int, help="numero de version du model")
-    parser.add_argument('--N', type=int, default=None, help="le fichier sur lequel on veut que l'IA continue d'ecrire, (non specifier genere un fichier a partir de rien)")
-    parser.add_argument('--time_limit', type=int, default=None, help="Limite de temps en minutes (pas specifier pas de limite de temps)")
-    parser.add_argument('--top_k', type=int, default=None, help="les k meilleurs pour la generation du model (pas specifier, n'utilise pas de top k)")
-    parser.add_argument('--max_tokens', type=int, default=None, help="la limite de tokens a generer (pas specifier aucune limite)")
+    parser.add_argument('--dataset_path', "--d", type=Path, required=True, help="Chemin du dataset")
+    parser.add_argument('--save_generate', "--s", type=str, required=True, help="Non du fichier svg que l'on veut sauvegarder (dans le dossier repository_svg)")
+    parser.add_argument('--model_name', "--m", type=str, required=True, help="nom du model a load")
+    parser.add_argument('--version_ID', "--id", type=int, required=True, help="numero de version du model")
+    parser.add_argument('--N', type=int, default=None, help="le fichier sur lequel on veut que l'IA continue d'ecrire, (non specifier -> genere un fichier a partir de rien)")
+    parser.add_argument('--time_limit', "--t", type=int, default=None, help="Limite de temps en secondes (pas specifier -> pas de limite de temps)")
+    parser.add_argument('--top_k', "--k", type=int, default=None, help="les k meilleurs pour la generation du model (pas specifier -> n'utilise pas de top k)")
+    parser.add_argument('--max_tokens', "--l", type=int, default=None, help="la limite de tokens a generer (pas specifier -> aucune limite)")
 
     args = parser.parse_args()
+    
+    import torch, gc
+    from dataset import svg_dataset
+    from LLM.model import Model, GenerationStats
 
     tStart = datetime.now()
     generate_cli(
@@ -95,7 +104,7 @@ if __name__ == "__main__":
         model_name=args.model_name,
         version_ID=args.version_ID,
         N_start=args.N,
-        time_limit=args.time_limit * 60,
+        time_limit=args.time_limit,
         top_k=args.top_k,
         max_tokens=args.max_tokens
     )

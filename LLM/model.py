@@ -253,7 +253,7 @@ class Model():
         return (ID, directory)
 
     @staticmethod
-    def load(ai_name: str, versionID: int, device: torch.device) -> "Model":
+    def load(ai_name: str, versionID: int, device: torch.device, compile:bool=True) -> "Model":
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `ai_name`: le nom de la version crée
         `versionID`: le numero de la version a charger
@@ -284,15 +284,13 @@ class Model():
             version_dir.joinpath(Model.__MODEL_NAME), map_location=device)
         # -> rebuild the model
         model.__rebuild_LLM(
-            llm_datas=model_data["llm"],
-            optim_datas=model_data["optimizer"],
-            config=config_datas,
-            device=device)
+            llm_datas=model_data["llm"], optim_datas=model_data["optimizer"],
+            config=config_datas, device=device, compile=compile)
         return model
 
     def __rebuild_LLM(
             self, llm_datas: dict, optim_datas: dict,
-            config: GPTConfig, device: torch.device) -> None:
+            config: GPTConfig, device: torch.device, compile:bool) -> None:
         """utilitaire a appeler aprés avoir load un model\n
         principalement repris de nanochat.checkpoint_manager.build_model"""
         assert isinstance(config, GPTConfig)
@@ -313,7 +311,9 @@ class Model():
         optim = llm.setup_optimizer()
         optim.load_state_dict(optim_datas)
         # set the llm and optimizer on self
-        self.llm = torch.compile(llm, dynamic=False)  # type: ignore
+        self.llm = llm
+        if compile is True:
+            self.llm = torch.compile(self.llm, dynamic=False)  # type: ignore
         self.optimizer = optim
 
     def train(

@@ -1,6 +1,5 @@
 
 from pathlib import Path
-import torch, gc
 from termcolor import colored
 import colorama
 colorama.init()
@@ -10,10 +9,6 @@ from datetime import datetime
 
 from holo.prettyFormats import prettyTime
 
-from dataset import svg_dataset
-import tokenizer_pfe.tokenizer_project as tokenizerLib
-from paths_cfg import TOKENIZER_SAVE_DIRECTORY
-from LLM.model import Model, Verbose
 
 PRESETS = {
     "1.6M": dict(depth=6, head_dim=128*2, context_size=1024, nb_heads_mult=5),
@@ -110,6 +105,12 @@ if __name__ == "__main__":
     parser.add_argument('--tokenizer_name', type=str,  help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)")
 
     args = parser.parse_args()
+    
+    import torch, gc
+    from dataset import svg_dataset
+    import tokenizer_pfe.tokenizer_project as tokenizerLib
+    from paths_cfg import TOKENIZER_SAVE_DIRECTORY
+    from LLM.model import Model, Verbose
 
     tStart = datetime.now()
     train_cli(
