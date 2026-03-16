@@ -26,7 +26,7 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
               int, tokenizer_name: str):
     '''
     Boucle pour generer l'entrainement en ligne de commande.
-    Example d'execution(a la racine): python -m CLI.cli dataset/samples_100 models_1.6_tests 1.6M 5 15 our_tokenizer.json
+    Exemple d'execution(a la racine): python -m CLI.cli_train dataset/samples_100 models_1.6_tests 1.6M 5 15 our_tokenizer.json
 
     dataset_path: le chemin du dataset
     save_name: nom de sauvegarde du modele
@@ -54,6 +54,8 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
             
             tokenizer.save(tokenizer_path)
             del dataset
+            gc.collect()
+            torch.cuda.empty_cache()
 
         else:
             print(colored("fail to import tokenizer", "red"))
@@ -71,10 +73,6 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
         tokenizer=tokenizer.encode,
         decoder=tokenizer.decode
     )
-
-
-    gc.collect()
-    torch.cuda.empty_cache()
 
     model = Model(save_name=save_name,depth=preset_config["depth"], head_dim= preset_config["head_dim"], 
         context_size=preset_config["context_size"], nb_heads_mult= preset_config["nb_heads_mult"] ,
@@ -100,12 +98,12 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Training Model")
-    parser.add_argument("dataset_path", type=Path,  help="Chemin du dataset")
-    parser.add_argument("save_name", type=str, help="nom du model a sauvegarder")
-    parser.add_argument("preset", type=str, choices=PRESETS.keys(), help="choix du model pour le preset de config")
-    parser.add_argument("max_epochs", type=int,  help="maximum d'epochs d'entrainement")
-    parser.add_argument("time_limit", type=int, help="Limite de temps en minutes")
-    parser.add_argument("tokenizer_name", type=str,  help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)")
+    parser.add_argument('--dataset_path', type=Path,  help="Chemin du dataset")
+    parser.add_argument('--save_name', type=str, help="nom du model a sauvegarder")
+    parser.add_argument('--preset', type=str, choices=PRESETS.keys(), help="choix du model pour le preset de config")
+    parser.add_argument('--max_epochs', type=int,  help="maximum d'epochs d'entrainement")
+    parser.add_argument('--time_limit', type=int, help="Limite de temps en minutes, (finit l'epoch sur lequel le model s'entraine avant de s'arreter)")
+    parser.add_argument('--tokenizer_name', type=str,  help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)")
 
     args = parser.parse_args()
 
@@ -115,7 +113,7 @@ if __name__ == "__main__":
         save_name=args.save_name,
         preset=args.preset,
         max_epochs=args.max_epochs,
-        time_limit=args.time_limit,
+        time_limit=args.time_limit * 60,
         tokenizer_name=args.tokenizer_name
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))
