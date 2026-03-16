@@ -22,3 +22,7 @@ Pour executer en ligne de commande le generate des svg:
 Exemple:
 python -m CLI.cli_generate --dataset_path dataset/samples_100 --save_generate new_svg  --model_name model_5.5M_1K --version_ID 8 --N 25 --time_limit 3 --top_k 1 --max_tokens 10000000
 '''
+
+Pour voir la description des parametres de chacun des fichier CLI:
+Python -m CLI.cli_train -h
+python -m CLI.cli_generate -h

@@ -20,6 +20,10 @@ def generate_cli(dataset_path: Path, save_generate: str, model_name: str, versio
     Exemple d'execution(a la racine): 
     python -m CLI.cli_generate --dataset_path dataset/samples_100 --save_generate new_svg  --model_name model_5.5M_1K --version_ID 8 --N 25 --time_limit 3 --top_k 1 --max_tokens 10000000
 
+    Pour voir la description des parametres:
+    python -m CLI.cli_generate -h
+    
+
     dataset_path: le chemin du dataset
     save_generate: nom du fichier svg que l'on souhaite generer
     model_name: nom du modele que l'on veut load

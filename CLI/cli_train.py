@@ -29,6 +29,9 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
     Exemple d'execution(a la racine): 
     python -m CLI.cli_train --dataset_path dataset/samples_100 --save_name models_1.6_tests --preset 1.6M --max_epochs 5 --time_limit 15 --tokenizer_name our_tokenizer.json
 
+    Pour voir la description des parametres:
+    python -m CLI.cli_train -h
+
     dataset_path: le chemin du dataset
     save_name: nom de sauvegarde du modele
     preset: fixations de parametre du LLM predefis pour l'entrainement de chaque modele. ATTENTION: le definir avant
