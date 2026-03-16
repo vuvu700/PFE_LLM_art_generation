@@ -38,11 +38,15 @@ class Verbose(enum.IntEnum):
     debug = enum.auto()
 
 
-@attrs.frozen
+@attrs.define
 class GenerationStats():
     nb_tokens: int
     gen_time: float
     stop_reason: str
+    
+    def update(self, nb_tokens: int, gen_time: float)->None:
+        self.nb_tokens = nb_tokens
+        self.gen_time = gen_time
 
 
 @attrs.define
@@ -472,7 +476,10 @@ class Model():
         # setup the vars
         if statsPtr is None:
             statsPtr = Pointer()
-        reason: str = "[BUG] stoped for no reason !?"
+        if not statsPtr.isSetted():
+            statsPtr.value = GenerationStats(
+                nb_tokens=0, gen_time=0.0, stop_reason="not stoped yet ...")
+        # => ptr is setted
         nb_tokens_gen: int = 0
         start_time: float = time.perf_counter()
         def time_since_start(): return (time.perf_counter() - start_time)
@@ -483,25 +490,24 @@ class Model():
         end_token_value: int = _[0]
         while True:
             if (max_tokens is not None) and (nb_tokens_gen >= max_tokens):
-                reason = "reached max_tokens"
+                statsPtr.value.stop_reason = "reached max_tokens"
                 break  # => generated enougth tokens
             if (max_time is not None) and (time_since_start() >= max_time):
-                reason = "reached max_time"
+                statsPtr.value.stop_reason = "reached max_time"
                 break  # => enougth time spent
             # => can predict another token
             new_token = int(next(tokens_generator))
             nb_tokens_gen += 1
             if new_token == end_token_value:
-                reason = "reached END_TOKEN"
+                statsPtr.value.stop_reason = "reached END_TOKEN"
                 break  # => reached the end of the generation
             tokens_buffer.append(new_token)
+            statsPtr.value.update(nb_tokens=nb_tokens_gen, gen_time=time_since_start())
             if len(tokens_buffer) >= decode_batch:
                 # => has generated enougth tokens to yield some text
                 yield self.tokenizer.decode(tokens_buffer)
                 tokens_buffer.clear()
         # => stoped generating (for a reason)
+        statsPtr.value.update(nb_tokens=nb_tokens_gen, gen_time=time_since_start())
         if len(tokens_buffer) > 0:
             yield self.tokenizer.decode(tokens_buffer)
-        statsPtr.value = GenerationStats(
-            nb_tokens=nb_tokens_gen, gen_time=time_since_start(),
-            stop_reason=reason)
