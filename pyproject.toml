@@ -25,6 +25,8 @@ dependencies = [
     "tokenizers>=0.22.0",
     "torch==2.9.1",
     "transformers>=4.57.3",
+    "vpype>=1.10",
+    "vpype-gcode>=0.13.0",
     "wandb>=0.25.0",
     "zstandard>=0.25.0",
 ]
