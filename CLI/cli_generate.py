@@ -38,28 +38,31 @@ def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: 
     print(f"trained for {model.nb_epoches_done} epoches")
     for k, v in model.historique.get_all_historique().items():
         print(colored(f"{k}: {v.get((model.nb_epoches_done-1), None):.4g}", "green")) # type: ignore
-    try:
-        if "dataset" in globals() : raise FileExistsError
+
+
+    if (N_start != None) :
+        print(colored("loading dataset", "green"))
         dataset = svg_dataset.SVGDataset(
             dataset_path, context_size=model.context_size,
             tokenizer=model.tokenizer.encode, decoder=model.tokenizer.decode)
-    except FileExistsError: pass
-
-    if (N_start != None) :
         print(colored(f"using: {dataset.samples[N_start].svg_file}", "blue"))
         start = dataset.samples[N_start].txt[: model.context_size]
+        del dataset
+        gc.collect()
+
+    else:
+        start = None
+
     statsPtr: Pointer[GenerationStats] = Pointer()
-    results = []
     for txt in model.generate_flow(
             start=start, decode_batch=256, temperature=1.0, top_k=top_k, 
             max_tokens=max_tokens, max_time=time_limit, statsPtr=statsPtr):
-        results.append(txt)
         print(txt, end="", flush=True)
 
     print("start: \n",start)
     print(colored(statsPtr.value, "blue"))
     print(colored(f" -> {statsPtr.value.nb_tokens / statsPtr.value.gen_time:.2f} tokens/sec", "blue"))
-    print("".join(results))
+ 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generating Model")
