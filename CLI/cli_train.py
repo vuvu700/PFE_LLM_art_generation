@@ -8,6 +8,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 
 from holo.prettyFormats import prettyTime
+from paths_cfg import TOKENIZER_SAVE_DIRECTORY
 
 
 PRESETS = {
@@ -38,7 +39,7 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
         raise FileNotFoundError(dataset_path)
     print(colored("dataset_path valid", "green"))
 
-    tokenizer_path = Path("tokenizer_save") / tokenizer_name
+    tokenizer_path = TOKENIZER_SAVE_DIRECTORY / tokenizer_name
 
     if not tokenizer_path.exists():
         print(colored("tokenizer not found", "red"))
