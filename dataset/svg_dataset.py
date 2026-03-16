@@ -6,6 +6,7 @@ from lxml import etree  # type: ignore
 import vpype 
 import tempfile
 import subprocess
+import re
 
 from torch.utils.data import Dataset
 
@@ -21,6 +22,14 @@ DEFAULT_TOKENIZER: Callable[[str], list[int]] = \
     lambda svg_text: list(map(ord, svg_text))
 DEFAULT_DECODER: Callable[[list[int]], str] = \
     lambda tokens: "".join(map(chr, tokens))
+
+VALID_GCODE_PREFIX = (
+    "G0","G00","G1","G01","G2","G02","G3","G03",
+    "G17","G18","G19",
+    "G20","G21",
+    "G90","G91",
+    "M0","M2","M3","M4","M5"
+)
 
 
 class SVGSample:
@@ -66,6 +75,34 @@ class BatchDatas(TypedDict):
 def clean_svg(svg: str) -> str:
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
+
+def clean_gcode(output):
+    # if model returned a list join everything
+    if isinstance(output, list):
+        output = "".join(output)
+
+    # remove tokens
+    output = output.replace("<|output_start|>", "")
+    output = output.replace("<|end_gcode|>", "")
+    # remove python list brackets
+    output = output.replace("[", "").replace("]", "")
+    output = output.replace("'", "").replace('"', "")
+
+    raw_lines = re.split(r'[\n\r]+', output)
+    clean_lines = []
+    for line in raw_lines:
+        line = line.strip()
+        if not line:
+            continue
+        if "<" in line or ">" in line: # svg specific characters
+            continue
+        line = re.sub(r'[^A-Za-z0-9\.\-\s]', '', line) #"unreadable" characters
+        line = re.sub(r'\s+', ' ', line) # nice spacing
+        # keep only valid G-code
+        if line.startswith(VALID_GCODE_PREFIX):
+            clean_lines.append(line)
+
+    return "\n".join(clean_lines)
 
 
 def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
