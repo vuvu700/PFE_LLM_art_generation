@@ -11,10 +11,10 @@ from holo.prettyFormats import prettyTime
 
 
 PRESETS = {
-    "1.6M": dict(depth=6, head_dim=128*2, context_size=1024, nb_heads_mult=5),
-    "5.5M": dict(depth=6, head_dim=128*2, context_size=4096*1, nb_heads_mult=5),
-    "5.5M_1K": dict(depth=6, head_dim=128*2, context_size=4096*1, nb_heads_mult=5),
-    "20.5M": dict(depth=6, head_dim=128*2, context_size=4096*1, nb_heads_mult=5),
+    "1.6M": dict(depth=6, head_dim=128, context_size=4096, nb_heads_mult=1),
+    "5.5M": dict(depth=6, head_dim=256, context_size=4096, nb_heads_mult=1),
+    "5.5M_1K": dict(depth=6, head_dim=256, context_size=4096, nb_heads_mult=1),
+    "20.5M": dict(depth=6, head_dim=512, context_size=4096, nb_heads_mult=5),
 }
 
 def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, time_limit: 
