@@ -215,14 +215,14 @@ class Model():
             `join`: True -> attend la fin de l'affichage avant de return
                 False -> return imediatement aprés avoir commencé l'affichage (instantané)"""
         # TODO: decomenter ce code une fois que affiche_metrics est implementé
-        # manager = ThreadsManager(nbWorkers=1, startPaused=False)
-        # manager.addWork(
-        #    func=affiche_metrics,
-        #    historique=copy.deepcopy(self.historique),
-        #    run_name=self._wandb_config.run_name,
-        #    run_ID=self._wandb_config.run_id) # type: ignore
-        # if join is True:
-        #    manager.join()
+        manager = ThreadsManager(nbWorkers=1, startPaused=False)
+        manager.addWork(
+        func=affiche_metrics,
+        historique=copy.deepcopy(self.historique),
+        run_name=self._wandb_config.run_name,
+        run_ID=self._wandb_config.run_id) # type: ignore
+        if join is True:
+           manager.join()
 
     def save(self, versionName: str, replaceTokenizer: bool = True) -> tuple[int, Path]:
         """sauvgarde le model dans son dossier et renvois la version cree\n
@@ -399,6 +399,7 @@ class Model():
             self.historique.add_metric(
                 "epoch_duration", epoch_duration, epoch_id=epochID)
             self.wandb_show_metrics(join=False)
+            self.save(f"checkpoint-{self.__nb_epoches_done}")
             # infos post epoches
             if verbose >= Verbose.debug:
                 prettyPrint(self._prof.pretty_totalTimes())

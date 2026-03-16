@@ -1,87 +1,47 @@
+import os 
+os.environ["WANDB_SILENT"] = "true"
+
 import wandb
+import wandb.errors
 
 from metrics.historique import Historique
 
 wandb.login()
 
-def affiche_metrics(historique: Historique, name_metrics: None | str | list[str]= None, run_name: None | str = None, id: None | str = None):
+def affiche_metrics(historique:Historique, run_name:str, run_ID:str)->None:
     """
-    Affiche les metrics sur wandb. Choix de la manière d'on on veut afficher les courbes directement sur le site.
-    On peut telecharger ces courbes. 
-    Affiche aussi un tableau de la taille du nombre d'epochs. On peut choisir d'afficher les valeurs des metrics et les commentaires.
-    Le tout peut etre telecharger aussi sous format csv.
+    affiche toutes les metrics de l'historique sur la run choisit\n
 
-    Entree:
-        - historique: la classe Historique
-        - name_metrics: str ou list[str]
-        - run_name: str, nom que l'on donne au fichier
-        - id: str
-
-    Attention: L'id sert pour de la manipulation de run, elle peut etre generer automatiquement.
-    Si lancer alors que l'id existe deja, cela ne marchera pas.
+    args: 
+    historique: les metrics a afficher
+    run_name: le nom de la run
+    run_ID: l'ID qui la rend unique
+      si une run avec le meme ID existe deja -> update cette run
+      si il n'y a pas de run avec ce nom -> en crée une nouvelle
     """
-    wandb.init(project='pfe', name=run_name, id= id)
+    api = wandb.Api()
+    run_existed = True
+    try:
+        run = api.run(f"pfe_projet-organization/pfe/{run_ID}")
+        run_existed = True
+    except wandb.errors.errors.CommError:
+        run_existed = False
 
-    metrics = historique.get_all_historique()
-    comments = historique.get_all_commentaries()
-    epochs = set()
-
-    for metric in metrics.values():
-        epochs.update(metric.keys())
-    
-    epochs = sorted(epochs)
-
-    if name_metrics is None:
-        names = []
-    elif isinstance(name_metrics, str):
-        names = [name_metrics]
+    if run_existed:
+        update_affiche_metrics(historique=historique, run_ID = run_ID)
     else:
-        names = name_metrics
-
-    columns = ["epoch_id", "comment"] + names
-    commentary_table = wandb.Table(columns=columns)
-
-    for epoch in epochs:
-        log_data = {}
-
-        for metrics_name, values in metrics.items():
-            if epoch in values:
-                log_data[metrics_name] = values[epoch]
-
-        epoch_comments = comments.get(epoch, [""])
-
-        for commentary in epoch_comments:
-            row = [epoch, commentary]
-
-            if isinstance(name_metrics, str):
-                row.append(metrics.get(name_metrics, {}).get(epoch))
-
-            elif isinstance(name_metrics, list):
-                for name in name_metrics:
-                    row.append(metrics.get(name, {}).get(epoch))
-
-            commentary_table.add_data(*row)
-
-        wandb.log(log_data, step=epoch)
-
-    wandb.log({"all_commentaries": commentary_table})
-    wandb.finish()
+        init_affiche_metrics(historique=historique, run_name=run_name, run_ID = run_ID)
 
 
-def affiche_commentaries(historique: Historique, run_name: None | str = None,id: None | str = None):
+def init_affiche_metrics(historique: Historique, run_name: str, run_ID: str):
+    """met a jour une nouvelle run et affiche toutes les nouvelles metrics de l'historique sur la run choisit\n
+
+    args: 
+    `historique`: les metrics a afficher
+    `run_name`: le nom de la run
+    `run_ID`: l'ID qui la rend unique (doit deja correspondre a une run existante)
     """
-    Cette fonction permet aussi l'affichage des metrics. Mais aussi l'affichage un tableau de la taille du nombre de commentaires.
-    Pour voir les commentaires plus facilement.
-    
-    Entree:
-        - historique: la classe Historique
-        - run_name: str, nom que l'on donne au fichier
-        - id: str
-
-    Attention: L'id sert pour de la manipulation de run, elle peut etre generer automatiquement.
-    Si lancer alors que l'id existe deja, cela ne marchera pas.
-    """
-    wandb.init(project='pfe', name=run_name, id=id)
+    wandb.init(project='pfe', name=run_name, id= run_ID)
 
     metrics = historique.get_all_historique()
     comments = historique.get_all_commentaries()
@@ -105,7 +65,61 @@ def affiche_commentaries(historique: Historique, run_name: None | str = None,id:
             for comment in comments[epoch]:
                 comment_table.add_data(epoch, comment)
 
-        wandb.log(log_data, step=epoch)
+        wandb.log(log_data, step=int(epoch))
 
     wandb.log({"comments_table": comment_table})
     wandb.finish()
+
+
+def update_affiche_metrics(historique: Historique, run_ID: None | str= None):
+    """met a jour une nouvelle run et affiche toutes les nouvelles metrics de l'historique sur la run choisit\n
+
+    args: 
+    `historique`: les metrics a afficher
+    `run_name`: le nom de la run
+    `run_ID`: l'ID qui la rend unique (doit deja correspondre a une run existante)
+    """
+    if run_ID is None:
+        raise ValueError("wrong_id")
+    
+    wandb.init(project="pfe",id=run_ID, resume='allow')
+
+    metrics = historique.get_all_historique()
+    comments = historique.get_all_commentaries()
+    
+    comment_table = wandb.Table(columns=["epoch", "comment"])
+
+    try:
+        api = wandb.Api()
+        run = api.run(f"pfe_projet-organization/pfe/{run_ID}")
+        old_table = run.use_artifact("comments_table:latest").get("comments_table")
+        for row in old_table.data:
+            comment_table.add_data(row["epoch"], row["comment"])
+
+    except Exception:
+        pass
+    
+    epochs = set()
+
+    for m in metrics.values():
+        epochs.update(m.keys())
+
+    epochs = sorted(epochs)
+
+    for epoch in epochs:
+        log_data = {}
+
+        for metric_name, values in metrics.items():
+            if epoch in values:
+                log_data[metric_name] = values[epoch]
+
+        if epoch in comments:
+            for comment in comments[epoch]:
+                comment_table.add_data(epoch, comment)
+
+        wandb.log(log_data, step=int(epoch))
+    
+    wandb.log({"comments_table": comment_table})
+    wandb.finish()
+
+    
