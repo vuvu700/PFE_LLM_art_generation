@@ -14,12 +14,14 @@ from holo.pointers import Pointer
 from dataset import svg_dataset
 from LLM.model import Model, GenerationStats
 
-def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: int | None, time_limit: int | None, top_k: int | None, max_tokens: int | None):
+def generate_cli(dataset_path: Path, save_generate: str, model_name: str, version_ID: int, N_start: int | None, time_limit: int | None, top_k: int | None, max_tokens: int | None):
     '''
     Boucle pour la generation de svg en ligne de commande.
-    Exemple d'execution(a la racine): python -m CLI.cli_generate dataset/samples_100 models_1.6M 5 45 2 1 3333333
+    Exemple d'execution(a la racine): 
+    python -m CLI.cli_generate --dataset_path dataset/samples_100 --save_generate new_svg  --model_name model_5.5M_1K --version_ID 8 --N 25 --time_limit 3 --top_k 1 --max_tokens 10000000
 
     dataset_path: le chemin du dataset
+    save_generate: nom du fichier svg que l'on souhaite generer
     model_name: nom du modele que l'on veut load
     version_ID: version de l'id du model ( par rapport au nombre d'epochs entrainer)
     N_start: choix du fichier dans le dataset sur lequel l'IA va commencer a ecrire
@@ -41,7 +43,7 @@ def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: 
 
 
     if (N_start != None) :
-        print(colored("loading dataset", "green"))
+        print(colored("loading dataset", "blue"))
         dataset = svg_dataset.SVGDataset(
             dataset_path, context_size=model.context_size,
             tokenizer=model.tokenizer.encode, decoder=model.tokenizer.decode)
@@ -54,10 +56,15 @@ def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: 
         start = None
 
     statsPtr: Pointer[GenerationStats] = Pointer()
-    for txt in model.generate_flow(
-            start=start, decode_batch=256, temperature=1.0, top_k=top_k, 
-            max_tokens=max_tokens, max_time=time_limit, statsPtr=statsPtr):
-        print(txt, end="", flush=True)
+    save_generate_path = Path("repository_svg") / save_generate
+    with open(save_generate_path, "w") as f:
+        if start is not None:
+            f.write(start)
+
+        for txt in model.generate_flow(
+                start=start, decode_batch=256, temperature=1.0, top_k=top_k, 
+                max_tokens=max_tokens, max_time=time_limit, statsPtr=statsPtr):
+            f.write(txt)
 
     print("start: \n",start)
     print(colored(statsPtr.value, "blue"))
@@ -67,6 +74,7 @@ def generate_cli(dataset_path: Path, model_name: str, version_ID: int, N_start: 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generating Model")
     parser.add_argument('--dataset_path', type=Path,  help="Chemin du dataset")
+    parser.add_argument('--save_generate', type=str,  help="Non du fichier svg que l'on veut sauvegarder (dans le dossier repository_svg)")
     parser.add_argument('--model_name', type=str, help="nom du model a load")
     parser.add_argument('--version_ID', type=int, help="numero de version du model")
     parser.add_argument('--N', type=int, default=None, help="le fichier sur lequel on veut que l'IA continue d'ecrire, (non specifier genere un fichier a partir de rien)")
@@ -79,6 +87,7 @@ if __name__ == "__main__":
     tStart = datetime.now()
     generate_cli(
         dataset_path=args.dataset_path,
+        save_generate=args.save_generate,
         model_name=args.model_name,
         version_ID=args.version_ID,
         N_start=args.N,

@@ -26,7 +26,8 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
               int, tokenizer_name: str):
     '''
     Boucle pour generer l'entrainement en ligne de commande.
-    Exemple d'execution(a la racine): python -m CLI.cli_train dataset/samples_100 models_1.6_tests 1.6M 5 15 our_tokenizer.json
+    Exemple d'execution(a la racine): 
+    python -m CLI.cli_train --dataset_path dataset/samples_100 --save_name models_1.6_tests --preset 1.6M --max_epochs 5 --time_limit 15 --tokenizer_name our_tokenizer.json
 
     dataset_path: le chemin du dataset
     save_name: nom de sauvegarde du modele
