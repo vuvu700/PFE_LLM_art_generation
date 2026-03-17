@@ -213,12 +213,13 @@ class SVGDataset(Dataset):
         self.chunks: list[DatasetChunck] = []
 
         self.samples = load_svg_samples(svg_dir)
+        if use_gcode:
+            # convert the svg text to gcode if needed
+            for sample in self.samples:
+                sample.txt = svg_to_gcodes(sample.txt, relative=use_relative_gcode)
 
         for svg_index, sample in enumerate(self.samples):
-            # convert the svg text to gcode if needed
             txt = sample.txt
-            if use_gcode:
-                txt = svg_to_gcodes(txt, relative=use_relative_gcode)
             # add the start and stop tokens
             # 2xStop => LLM learn that "Stop -> Stop"
             tokens = self.tokenizer("".join([
