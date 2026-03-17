@@ -98,12 +98,12 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Training Model")
-    parser.add_argument('--dataset_path', type=Path,  help="Chemin du dataset")
-    parser.add_argument('--save_name', type=str, help="nom du model a sauvegarder")
-    parser.add_argument('--preset', type=str, choices=PRESETS.keys(), help="choix du model pour le preset de config")
-    parser.add_argument('--max_epochs', type=int,  help="maximum d'epochs d'entrainement")
-    parser.add_argument('--time_limit', type=int, help="Limite de temps en minutes, (finit l'epoch sur lequel le model s'entraine avant de s'arreter)")
-    parser.add_argument('--tokenizer_name', type=str,  help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)")
+    parser.add_argument('--dataset_path', '--d', type=Path,  help="Chemin du dataset")
+    parser.add_argument('--save_name','--s', type=str, help="nom du model a sauvegarder")
+    parser.add_argument('--preset', '--p', type=str, choices=PRESETS.keys(), help="choix du model pour le preset de config")
+    parser.add_argument('--max_epochs', '--m', type=int,  help="maximum d'epochs d'entrainement")
+    parser.add_argument('--time_limit', '--time', type=int, help="Limite de temps en minutes, (finit l'epoch sur lequel le model s'entraine avant de s'arreter)")
+    parser.add_argument('--tokenizer_name','--t' ,type=str,  help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)")
 
     args = parser.parse_args()
     
