@@ -333,7 +333,7 @@ class Model():
                 dataset, batch_size=batch_size, shuffle=True, num_workers=0)
             accum = MetricsAccumulator(usage="train", topK=5)
             progress_batches = ProgressBar.simpleConfig(
-                nbSteps=len(dataloader), taskName="batches", useEma=False)
+                nbSteps=len(dataloader), taskName="batches", useEma=1/30)
 
             epochID = self.nb_epoches_done
             batch_iterator = iter(dataloader)
