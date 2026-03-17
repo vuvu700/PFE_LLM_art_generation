@@ -6,7 +6,7 @@
 # project specific
 tokenizer_save/
 models_save/
-experiments/codes/wandb
+**/wandb/
 repository_svg/
 
 # uv related

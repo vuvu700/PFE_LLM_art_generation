@@ -82,10 +82,13 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
     )
 
     if versionID != None:
-        raise NotImplementedError("to be implemented")
-    model = Model(save_name=save_name,depth=preset_config["depth"], head_dim= preset_config["head_dim"], 
-        context_size=preset_config["context_size"], nb_heads_mult= preset_config["nb_heads_mult"] ,
-        tokenizer=tokenizer_path, device="cuda")
+        model = Model.load(save_name, versionID=versionID, device=torch.device("cuda:0"), compile=True)
+    
+    else:
+        model = Model(save_name=save_name,depth=preset_config["depth"], head_dim= preset_config["head_dim"], 
+            context_size=preset_config["context_size"], nb_heads_mult= preset_config["nb_heads_mult"] ,
+            tokenizer=tokenizer_path, device="cuda")
+        
     model.show_infos()
 
     print(colored("start training", "green"))
