@@ -23,14 +23,11 @@ DEFAULT_TOKENIZER: Callable[[str], list[int]] = \
 DEFAULT_DECODER: Callable[[list[int]], str] = \
     lambda tokens: "".join(map(chr, tokens))
 
-VALID_GCODE_PREFIX = (
-    "G0","G00","G1","G01","G2","G02","G3","G03",
-    "G17","G18","G19",
-    "G20","G21",
-    "G90","G91",
-    "M0","M2","M3","M4","M5"
-)
-
+# Normalization constants
+SVG_WIDTH = 900 # for testing, will replace by max for svg
+SVG_HEIGHT = 900 # for testing, will replace by max for svg
+GCODE_WIDTH = 9.375 
+GCODE_HEIGHT = 9.375
 
 class SVGSample:
     def __init__(self, txt: str, svg_file: Path):
@@ -76,34 +73,59 @@ def clean_svg(svg: str) -> str:
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
 
+def _normalize(x, y):
+    nx = round((x / SVG_WIDTH) * GCODE_WIDTH, 4)
+    ny = round((1 - y / SVG_HEIGHT) * GCODE_HEIGHT, 4) # svg starts top left and gcode bottom right so need to flip y
+    return nx, ny
+
 def clean_gcode(output):
-    # if model returned a list join everything
     if isinstance(output, list):
         output = "".join(output)
-
-    # remove tokens
-    output = output.replace("<|output_start|>", "")
-    output = output.replace("<|end_gcode|>", "")
-    # remove python list brackets
-    output = output.replace("[", "").replace("]", "")
-    output = output.replace("'", "").replace('"', "")
-
+    output = (
+        output.replace("<|output_start|>", "")
+        .replace("<|end_gcode|>", "")
+        .replace("[", "")
+        .replace("]", "")
+        .replace("'", "")
+        .replace('"', "")
+    )
+    output = re.sub(r'><', '>\n<', output) # add newlines between tags
+    output = re.sub(r'(<line)', r'\n\1', output) # add newlines before line tags (in case they are not separated by >)
     raw_lines = re.split(r'[\n\r]+', output)
     clean_lines = []
+    skipped = 0
     for line in raw_lines:
         line = line.strip()
         if not line:
             continue
-        if "<" in line or ">" in line: # svg specific characters
-            continue
-        line = re.sub(r'[^A-Za-z0-9\.\-\s]', '', line) #"unreadable" characters
-        line = re.sub(r'\s+', ' ', line) # nice spacing
-        # keep only valid G-code
-        if line.startswith(VALID_GCODE_PREFIX):
+        # keep valid G/M code lines
+        if re.match(r'^(?:G|M)\d+', line):
+            line = re.sub(r'\s+', ' ', line)
             clean_lines.append(line)
+            continue
+        # convert SVG <line> to G-code
+        if "<line" in line:
+            x1 = re.search(r'x1="?([\d\.\-]+)"?', line)
+            y1 = re.search(r'y1="?([\d\.\-]+)"?', line)
+            x2 = re.search(r'x2="?([\d\.\-]+)"?', line)
+            y2 = re.search(r'y2="?([\d\.\-]+)"?', line)
+
+            if x1 and y1 and x2 and y2:
+                try:
+                    x1, y1 = float(x1.group(1)), float(y1.group(1))
+                    x2, y2 = float(x2.group(1)), float(y2.group(1))
+                    x1, y1 = _normalize(x1, y1)
+                    x2, y2 = _normalize(x2, y2)
+                    clean_lines.append(f"G00 X{x1} Y{y1}")
+                    clean_lines.append(f"G01 X{x2} Y{y2}")
+                except ValueError:
+                    skipped += 1 # to see how many it falty coordinates it removes (debug)
+                    continue
+
+    if skipped > 0:
+        print(f"[clean_gcode] Dropped {skipped} malformed SVG lines")
 
     return "\n".join(clean_lines)
-
 
 def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
     svg_samples: list[SVGSample] = []
