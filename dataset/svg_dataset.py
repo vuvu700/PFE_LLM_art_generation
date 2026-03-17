@@ -24,8 +24,8 @@ DEFAULT_DECODER: Callable[[list[int]], str] = \
     lambda tokens: "".join(map(chr, tokens))
 
 # Normalization constants
-SVG_WIDTH = 900 # for testing, will replace by max for svg
-SVG_HEIGHT = 900 # for testing, will replace by max for svg
+DEFAULT_SVG_WIDTH = 900 # for testing, will replace by max for svg
+DEFAULT_SVG_HEIGHT = 900 # for testing, will replace by max for svg
 GCODE_WIDTH = 9.375 
 GCODE_HEIGHT = 9.375
 
@@ -73,12 +73,16 @@ def clean_svg(svg: str) -> str:
     root = etree.fromstring(svg.encode('utf-8'), parser=parser)
     return etree.tostring(root, encoding='unicode', pretty_print=False)
 
-def _normalize(x, y):
-    nx = round((x / SVG_WIDTH) * GCODE_WIDTH, 4)
-    ny = round((1 - y / SVG_HEIGHT) * GCODE_HEIGHT, 4) # svg starts top left and gcode bottom right so need to flip y
+def _normalize(x, y, svg_max_x, svg_max_y):
+    """normalize svg coordinates to gcode coordinates 
+    (0,0 at bottom left, max at top right)"""
+    nx = round((x / svg_max_x) * GCODE_WIDTH, 4)
+    ny = round((1 - y / svg_max_y) * GCODE_HEIGHT, 4)
     return nx, ny
 
 def clean_gcode(output):
+    """clean the output of the gcode generation to keep only the G/M code lines 
+    and convert svg <line> to G-code"""
     if isinstance(output, list):
         output = "".join(output)
     output = (
@@ -91,6 +95,14 @@ def clean_gcode(output):
     )
     output = re.sub(r'><', '>\n<', output) # add newlines between tags
     output = re.sub(r'(<line)', r'\n\1', output) # add newlines before line tags (in case they are not separated by >)
+    
+    all_x = re.findall(r'x[12]="?([\d\.\-]+)"?', output)
+    all_y = re.findall(r'y[12]="?([\d\.\-]+)"?', output)
+    valid_x = [float(v) for v in all_x if v.count('.') <= 1]
+    valid_y = [float(v) for v in all_y if v.count('.') <= 1]
+    svg_max_x = max(valid_x) if valid_x else DEFAULT_SVG_WIDTH
+    svg_max_y = max(valid_y) if valid_y else DEFAULT_SVG_HEIGHT
+
     raw_lines = re.split(r'[\n\r]+', output)
     clean_lines = []
     skipped = 0
@@ -114,8 +126,8 @@ def clean_gcode(output):
                 try:
                     x1, y1 = float(x1.group(1)), float(y1.group(1))
                     x2, y2 = float(x2.group(1)), float(y2.group(1))
-                    x1, y1 = _normalize(x1, y1)
-                    x2, y2 = _normalize(x2, y2)
+                    x1, y1 = _normalize(x1, y1, svg_max_x, svg_max_y)
+                    x2, y2 = _normalize(x2, y2, svg_max_x, svg_max_y)
                     clean_lines.append(f"G00 X{x1} Y{y1}")
                     clean_lines.append(f"G01 X{x2} Y{y2}")
                 except ValueError:
