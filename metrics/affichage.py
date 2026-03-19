@@ -34,7 +34,7 @@ def affiche_metrics(historique:Historique, run_name:str, run_ID:str)->None:
 
 
 def init_affiche_metrics(historique: Historique, run_name: str, run_ID: str):
-    """met a jour une nouvelle run et affiche toutes les nouvelles metrics de l'historique sur la run choisit\n
+    """fait une nouvelle run et affiche toutes les nouvelles metrics de l'historique de cette run\n
 
     args: 
     `historique`: les metrics a afficher
@@ -72,7 +72,7 @@ def init_affiche_metrics(historique: Historique, run_name: str, run_ID: str):
 
 
 def update_affiche_metrics(historique: Historique, run_ID: None | str= None):
-    """met a jour une nouvelle run et affiche toutes les nouvelles metrics de l'historique sur la run choisit\n
+    """met a jour une run et affiche toutes les nouvelles metrics de l'historique sur la run choisit\n
 
     args: 
     `historique`: les metrics a afficher
