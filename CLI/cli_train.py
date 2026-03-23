@@ -119,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument('--absolute_gcode','--abs', action="store_true",  help="active le gcode en utilisant les coordonnees absolues")
     parser.add_argument('--relative_gcode','--rel', action="store_true",  help="active le gcode en utilisant les coordonnees absolues")
     parser.add_argument('--versionID','--v', type=int, required=False, default=None, help="permet de train a partir d'une version existante d'un modele")
-    parser.add_argument('--wandb','--v', action="store_true", help="permet d'activer wanDB pour l'entrainement")
+    parser.add_argument('--wandbOff', action="store_true", help="permet de desactiver wandb pour l'entrainement")
 
     args = parser.parse_args()
     assert not (args.absolute_gcode and args.relative_gcode), \
@@ -142,6 +142,6 @@ if __name__ == "__main__":
         absolute_gcode=args.absolute_gcode,
         relative_gcode=args.relative_gcode,
         versionID=args.versionID,
-        wandb=args.wandb,
+        wandb=(not args.wandbOff),
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))
