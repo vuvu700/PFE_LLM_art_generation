@@ -19,8 +19,8 @@ PRESETS = {
     "20.5M": dict(depth=6, head_dim=512, context_size=4096, nb_heads_mult=5),
 }
 
-def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, time_limit: 
-              int, tokenizer_name: str, absolute_gcode:bool, relative_gcode:bool, versionID: int):
+def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, time_limit: int, 
+              tokenizer_name: str, absolute_gcode:bool, relative_gcode:bool, versionID: int, wandb: bool):
     '''
     Boucle pour generer l'entrainement en ligne de commande.
     Exemple d'execution(a la racine): 
@@ -84,12 +84,11 @@ def train_cli(dataset_path: Path, save_name: str, preset: str, max_epochs: int, 
 
     if versionID != None:
         model = Model.load(save_name, versionID=versionID, device=torch.device("cuda:0"), compile=True)
-    
     else:
         model = Model(save_name=save_name,depth=preset_config["depth"], head_dim= preset_config["head_dim"], 
             context_size=preset_config["context_size"], nb_heads_mult= preset_config["nb_heads_mult"] ,
             tokenizer=tokenizer_path, device="cuda")
-        
+    model.set_wandb_state(wandb)
     model.show_infos()
 
     print(colored("start training", "green"))
@@ -120,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument('--absolute_gcode','--abs', action="store_true",  help="active le gcode en utilisant les coordonnees absolues")
     parser.add_argument('--relative_gcode','--rel', action="store_true",  help="active le gcode en utilisant les coordonnees absolues")
     parser.add_argument('--versionID','--v', type=int, required=False, default=None, help="permet de train a partir d'une version existante d'un modele")
+    parser.add_argument('--wandb','--v', action="store_true", help="permet d'activer wanDB pour l'entrainement")
 
     args = parser.parse_args()
     assert not (args.absolute_gcode and args.relative_gcode), \
@@ -141,6 +141,7 @@ if __name__ == "__main__":
         tokenizer_name=args.tokenizer_name,
         absolute_gcode=args.absolute_gcode,
         relative_gcode=args.relative_gcode,
-        versionID= args.versionID
+        versionID=args.versionID,
+        wandb=args.wandb,
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))

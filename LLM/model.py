@@ -69,7 +69,7 @@ class Model():
     __slots__ = (
         "llm", "tokenizer", "optimizer", "historique",
         "_save_manager", "_prof", "__nb_epoches_done",
-        "_wandb_config", )
+        "_wandb_config", "_wandb_enabled", )
 
     __TOKENIZER_NAME = "tokenizer.json"  # sauvgardé 1 fois, a la racine de l'IA
     __MODEL_NAME = "model.pkl"  # save dans les versions
@@ -130,6 +130,7 @@ class Model():
         self.llm = torch.compile(self.llm, dynamic=False)  # type: ignore
         # --- others ---
         self.__nb_epoches_done = 0
+        self._wandb_enabled: bool = True
         self._wandb_config = Wandb_run_config.fromName(save_name)
         self._prof = Profiler([
             "iterDataloader", "splitBatch", "toDevice",
@@ -206,6 +207,10 @@ class Model():
     def nb_epoches_done(self) -> int:
         return self.__nb_epoches_done
 
+    def set_wandb_state(self, state:bool)->None:
+        self._wandb_enabled = state
+        
+
     def wandb_show_metrics(self, join: bool) -> None:
         """affiche les metrics du model sur wandb\n
         si la run n'existe pas, en crée une nouvelle, sinon update celle deja existante\n
@@ -214,7 +219,8 @@ class Model():
         args:
             `join`: True -> attend la fin de l'affichage avant de return
                 False -> return imediatement aprés avoir commencé l'affichage (instantané)"""
-        # TODO: decomenter ce code une fois que affiche_metrics est implementé
+        if self._wandb_enabled is False:
+            return # => wandb is disabled
         manager = ThreadsManager(nbWorkers=1, startPaused=False)
         manager.addWork(
         func=affiche_metrics,

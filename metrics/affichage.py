@@ -6,7 +6,11 @@ import wandb.errors
 
 from metrics.historique import Historique
 
-wandb.login()
+WANDB_LOGGED = False
+def wandb_login():
+    global WANDB_LOGGED
+    if WANDB_LOGGED is False:
+        wandb.login()
 
 def affiche_metrics(historique:Historique, run_name:str, run_ID:str)->None:
     """
@@ -19,6 +23,7 @@ def affiche_metrics(historique:Historique, run_name:str, run_ID:str)->None:
       si une run avec le meme ID existe deja -> update cette run
       si il n'y a pas de run avec ce nom -> en crée une nouvelle
     """
+    wandb_login()
     api = wandb.Api()
     run_existed = True
     try:
@@ -41,6 +46,7 @@ def init_affiche_metrics(historique: Historique, run_name: str, run_ID: str):
     `run_name`: le nom de la run
     `run_ID`: l'ID qui la rend unique (doit deja correspondre a une run existante)
     """
+    wandb_login()
     wandb.init(project='pfe', name=run_name, id= run_ID)
 
     metrics = historique.get_all_historique()
