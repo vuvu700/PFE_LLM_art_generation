@@ -347,13 +347,8 @@ class Model():
             epoch_start_time = time.perf_counter()
             if verbose >= Verbose.perEpoch:
                 print(f"\nstarting epoch: {nbEpoch_done+1}")
-            memStart = torch.cuda.memory.memory_reserved()
-
+            
             while True:
-                # clear the cache
-                memCurr = torch.cuda.memory.memory_reserved()
-                if (memCurr-memStart) > 2 * 1e9:  # using ..Go
-                    torch.cuda.memory.empty_cache()
                 # get the batch (not a for loop so we can mesure the duration of 'next')
                 with self._prof.mesure("iterDataloader"):
                     try:
