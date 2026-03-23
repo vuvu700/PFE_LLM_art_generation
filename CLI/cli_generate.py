@@ -38,6 +38,7 @@ def generate_cli(dataset_path: Path, save_generate: str, model_name: str, versio
         torch.cuda.empty_cache()
     except Exception: pass
     model = Model.load(model_name, versionID=version_ID, device=torch.device("cuda:0"), compile=False)
+    model.set_wandb_state(False)
     model.show_infos()
 
     print(f"trained for {model.nb_epoches_done} epoches")
