@@ -281,6 +281,7 @@ class Model():
             model.__nb_epoches_done = metadatas["nb_epoch_done"]
             config_datas = metadatas["llm_config"]
         # generate a new wandb ID to avoid any conflicts
+        model._wandb_enabled = True
         model._wandb_config = Wandb_run_config.fromName(ai_name)
         # -> history
         model.historique = Historique.load(
