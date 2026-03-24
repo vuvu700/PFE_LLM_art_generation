@@ -22,6 +22,7 @@ def generate_cli(
     time_limit: int | None,
     top_k: int | None,
     max_tokens: int | None,
+    temperature: float = 1.0
 ):
     """
     Boucle pour la generation de svg en ligne de commande.
@@ -84,7 +85,7 @@ def generate_cli(
         for txt in model.generate_flow(
             start=start,
             decode_batch=64,
-            temperature=1.0,
+            temperature=temperature,
             top_k=top_k,
             max_tokens=max_tokens,
             max_time=time_limit,
@@ -156,6 +157,13 @@ if __name__ == "__main__":
         default=None,
         help="la limite de tokens a generer (pas specifier -> aucune limite)",
     )
+    parser.add_argument(
+        "--temperature",
+        "--temp",
+        type=float,
+        default=1.0,
+        help="temperature pour la generation",
+    )
 
     args = parser.parse_args()
 
@@ -174,5 +182,6 @@ if __name__ == "__main__":
         time_limit=args.time_limit,
         top_k=args.top_k,
         max_tokens=args.max_tokens,
+        temperature=args.temperature,
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))
