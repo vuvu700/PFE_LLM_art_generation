@@ -7,17 +7,9 @@ colorama.init()
 from argparse import ArgumentParser
 from datetime import datetime
 
+from .presets import PRESETS
 from holo.prettyFormats import prettyTime
 from paths_cfg import TOKENIZER_SAVE_DIRECTORY
-
-PRESETS = {
-    "1.6M": dict(depth=6, head_dim=128, context_size=4096, nb_heads_mult=1),
-    "5.5M": dict(depth=6, head_dim=256, context_size=4096, nb_heads_mult=1),
-    "5.5M_1K": dict(depth=6, head_dim=256, context_size=4096, nb_heads_mult=1),
-    "11.8M_1K": dict(depth=6, head_dim=384, context_size=4096, nb_heads_mult=1),
-    "20.5M": dict(depth=6, head_dim=512, context_size=4096, nb_heads_mult=5),
-}
-
 
 def train_cli(
     dataset_path: Path,
