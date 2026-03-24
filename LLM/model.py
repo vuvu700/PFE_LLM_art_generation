@@ -25,7 +25,6 @@ from metrics.historique import Historique
 from metrics.metrics import MetricsAccumulator
 from metrics.affichage import affiche_metrics
 
-
 _Device = Literal["cpu", "cuda"]
 _WPatternChr = Literal["S", "L"]
 _WPattern = tuple[_WPatternChr, ...]
@@ -39,37 +38,42 @@ class Verbose(enum.IntEnum):
 
 
 @attrs.define
-class GenerationStats():
+class GenerationStats:
     nb_tokens: int
     gen_time: float
     stop_reason: str
-    
-    def update(self, nb_tokens: int, gen_time: float)->None:
+
+    def update(self, nb_tokens: int, gen_time: float) -> None:
         self.nb_tokens = nb_tokens
         self.gen_time = gen_time
 
 
 @attrs.define
-class Wandb_run_config():
+class Wandb_run_config:
     run_name: str
     run_id: str
 
     @staticmethod
     def fromName(name: str) -> "Wandb_run_config":
-        return Wandb_run_config(
-            run_name=name,
-            run_id=Wandb_run_config.genID())
+        return Wandb_run_config(run_name=name, run_id=Wandb_run_config.genID())
 
     @staticmethod
     def genID() -> str:
         return str(uuid.uuid4())
 
 
-class Model():
+class Model:
     __slots__ = (
-        "llm", "tokenizer", "optimizer", "historique",
-        "_save_manager", "_prof", "__nb_epoches_done",
-        "_wandb_config", "_wandb_enabled", )
+        "llm",
+        "tokenizer",
+        "optimizer",
+        "historique",
+        "_save_manager",
+        "_prof",
+        "__nb_epoches_done",
+        "_wandb_config",
+        "_wandb_enabled",
+    )
 
     __TOKENIZER_NAME = "tokenizer.json"  # sauvgardé 1 fois, a la racine de l'IA
     __MODEL_NAME = "model.pkl"  # save dans les versions
@@ -82,9 +86,15 @@ class Model():
     historique: Historique
 
     def __init__(
-            self, save_name: str | None, tokenizer: Tokenizer | Path | None,
-            device: _Device, depth: int, head_dim: int,
-            context_size: int, nb_heads_mult: float = 1.0) -> None:
+        self,
+        save_name: str | None,
+        tokenizer: Tokenizer | Path | None,
+        device: _Device,
+        depth: int,
+        head_dim: int,
+        context_size: int,
+        nb_heads_mult: float = 1.0,
+    ) -> None:
         """cree un model avec un nouveau LLM non entrainé\n
         args:
             `save_name`: le nom utilisé pour
@@ -100,10 +110,10 @@ class Model():
         # --- save manager ---
         if save_name is None:
             save_name = holo.files.get_unique_name(
-                MODELS_SAVE_DIRECTORY, prefix="modelAuto_", onlyNumbers=True)
+                MODELS_SAVE_DIRECTORY, prefix="modelAuto_", onlyNumbers=True
+            )
             print(f"used auto save name: {save_name!r}")
-        self._save_manager = SavedAiTree(
-            MODELS_SAVE_DIRECTORY.joinpath(save_name))
+        self._save_manager = SavedAiTree(MODELS_SAVE_DIRECTORY.joinpath(save_name))
         # --- tokenizer ---
         if tokenizer is None:
             tokenizer = self.get_tokenizer_path()
@@ -114,9 +124,13 @@ class Model():
         self.historique = Historique()
         # --- LLM & optimizer---
         self.llm = self.__build_model_meta(
-            depth=depth, head_dim=head_dim, nb_heads_mult=nb_heads_mult,
-            vocab_size=self.vocab_size, effective_sequence_size=context_size,
-            window_pattern=("S", "S", "S", "L"))
+            depth=depth,
+            head_dim=head_dim,
+            nb_heads_mult=nb_heads_mult,
+            vocab_size=self.vocab_size,
+            effective_sequence_size=context_size,
+            window_pattern=("S", "S", "S", "L"),
+        )
         # -> All tensors get storage on target device but with uninitialized
         self.llm.to_empty(device=device)
         # -> All tensors get initialized
@@ -132,26 +146,42 @@ class Model():
         self.__nb_epoches_done = 0
         self._wandb_enabled: bool = True
         self._wandb_config = Wandb_run_config.fromName(save_name)
-        self._prof = Profiler([
-            "iterDataloader", "splitBatch", "toDevice",
-            "forward", "metrics&loss", "zero_grad", "backward", "step"])
+        self._prof = Profiler(
+            [
+                "iterDataloader",
+                "splitBatch",
+                "toDevice",
+                "forward",
+                "metrics&loss",
+                "zero_grad",
+                "backward",
+                "step",
+            ]
+        )
 
     def show_infos(self) -> None:
         print(self.config)
         params = self.llm.num_scaling_params()
-        params_Embed = (params['wte'] + params['value_embeds'])
-        print(f"{params['total']:_d} total params "
-              f"(embeding: {params_Embed:_d} | "
-              f"last layer: {params['lm_head']:_d} | "
-              f"transformer: {params['transformer_matrices']:_d})")
+        params_Embed = params["wte"] + params["value_embeds"]
         print(
-            f"on device: {self.device!r}, with effective context_size: {self.context_size}")
+            f"{params['total']:_d} total params "
+            f"(embeding: {params_Embed:_d} | "
+            f"last layer: {params['lm_head']:_d} | "
+            f"transformer: {params['transformer_matrices']:_d})"
+        )
+        print(
+            f"on device: {self.device!r}, with effective context_size: {self.context_size}"
+        )
 
     @staticmethod
     def __build_model_meta(
-            depth: int, head_dim: int, nb_heads_mult: float,
-            vocab_size: int, effective_sequence_size: int,
-            window_pattern: _WPattern) -> GPT:
+        depth: int,
+        head_dim: int,
+        nb_heads_mult: float,
+        vocab_size: int,
+        effective_sequence_size: int,
+        window_pattern: _WPattern,
+    ) -> GPT:
         """Build a model on meta device for a given depth (shapes/dtypes only, no data)."""
         # cette fonction a été adaptée depuis
         #   la demo de nonoChat, les constantes y sont issues aussi
@@ -164,9 +194,14 @@ class Model():
         model_dim = int(((base_dim + head_dim - 1) // head_dim) * head_dim)
         num_heads = int(model_dim // head_dim)
         config = GPTConfig(
-            sequence_len=max_seq_len, vocab_size=vocab_size,
-            n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,
-            window_pattern="".join(window_pattern))
+            sequence_len=max_seq_len,
+            vocab_size=vocab_size,
+            n_layer=depth,
+            n_head=num_heads,
+            n_kv_head=num_heads,
+            n_embd=model_dim,
+            window_pattern="".join(window_pattern),
+        )
         with torch.device("meta"):
             model_meta = GPT(config)
         return model_meta
@@ -194,22 +229,22 @@ class Model():
     @property
     def context_size(self) -> int:
         """recomanded context size to use"""
-        return (self.config.sequence_len // 2)
+        return self.config.sequence_len // 2
 
     @property
     def device(self) -> torch.device:
         device = self.llm.get_device()
-        assert isinstance(device, torch.device), \
-            f"expected a {torch.device}, got: {type(device)}"
+        assert isinstance(
+            device, torch.device
+        ), f"expected a {torch.device}, got: {type(device)}"
         return device
 
     @property
     def nb_epoches_done(self) -> int:
         return self.__nb_epoches_done
 
-    def set_wandb_state(self, state:bool)->None:
+    def set_wandb_state(self, state: bool) -> None:
         self._wandb_enabled = state
-        
 
     def wandb_show_metrics(self, join: bool) -> None:
         """affiche les metrics du model sur wandb\n
@@ -220,15 +255,16 @@ class Model():
             `join`: True -> attend la fin de l'affichage avant de return
                 False -> return imediatement aprés avoir commencé l'affichage (instantané)"""
         if self._wandb_enabled is False:
-            return # => wandb is disabled
+            return  # => wandb is disabled
         manager = ThreadsManager(nbWorkers=1, startPaused=False)
         manager.addWork(
-        func=affiche_metrics,
-        historique=copy.deepcopy(self.historique),
-        run_name=self._wandb_config.run_name,
-        run_ID=self._wandb_config.run_id) # type: ignore
+            func=affiche_metrics,
+            historique=copy.deepcopy(self.historique),
+            run_name=self._wandb_config.run_name,
+            run_ID=self._wandb_config.run_id,
+        )  # type: ignore
         if join is True:
-           manager.join()
+            manager.join()
 
     def save(self, versionName: str, replaceTokenizer: bool = True) -> tuple[int, Path]:
         """sauvgarde le model dans son dossier et renvois la version cree\n
@@ -241,8 +277,10 @@ class Model():
         torch.save(
             obj={
                 "llm": self.llm.state_dict(),
-                "optimizer": self.optimizer.state_dict()},
-            f=directory.joinpath(self.__MODEL_NAME))
+                "optimizer": self.optimizer.state_dict(),
+            },
+            f=directory.joinpath(self.__MODEL_NAME),
+        )
         # -> tokenizer
         tokenizerPath = self.get_tokenizer_path()
         if replaceTokenizer or (not tokenizerPath.exists()):
@@ -254,26 +292,29 @@ class Model():
             metadatas = {
                 "prof": self._prof,
                 "nb_epoch_done": self.__nb_epoches_done,
-                "llm_config": self.config}
+                "llm_config": self.config,
+            }
             pickle.dump(metadatas, file)
         return (ID, directory)
 
     @staticmethod
-    def load(ai_name: str, versionID: int, device: torch.device, compile:bool=True) -> "Model":
+    def load(
+        ai_name: str, versionID: int, device: torch.device, compile: bool = True
+    ) -> "Model":
         """sauvgarde le model dans son dossier et renvois la version cree\n
         `ai_name`: le nom de la version crée
         `versionID`: le numero de la version a charger
         return: (ID de la version, chemain de la version)"""
         AI_Folder = MODELS_SAVE_DIRECTORY.joinpath(ai_name)
-        assert AI_Folder.exists(), \
-            f"there is AI directory named: {ai_name!r} inside: {MODELS_SAVE_DIRECTORY.as_posix()}"
+        assert (
+            AI_Folder.exists()
+        ), f"there is AI directory named: {ai_name!r} inside: {MODELS_SAVE_DIRECTORY.as_posix()}"
         tree = SavedAiTree(AI_Folder)
         version_dir = tree.getVersionDirectory(versionID)
         model = object.__new__(Model)
         model._save_manager = tree
         # -> tokenizer
-        model.tokenizer = Tokenizer.load(
-            AI_Folder.joinpath(Model.__TOKENIZER_NAME))
+        model.tokenizer = Tokenizer.load(AI_Folder.joinpath(Model.__TOKENIZER_NAME))
         # -> metadatas
         with open(version_dir.joinpath(Model.__METADATAS_NAME), mode="rb") as file:
             metadatas: dict = pickle.load(file)
@@ -284,20 +325,29 @@ class Model():
         model._wandb_enabled = True
         model._wandb_config = Wandb_run_config.fromName(ai_name)
         # -> history
-        model.historique = Historique.load(
-            version_dir.joinpath(Model.__HISTORY_NAME))
+        model.historique = Historique.load(version_dir.joinpath(Model.__HISTORY_NAME))
         # -> LLM & optimizer
         model_data: dict = torch.load(
-            version_dir.joinpath(Model.__MODEL_NAME), map_location=device)
+            version_dir.joinpath(Model.__MODEL_NAME), map_location=device
+        )
         # -> rebuild the model
         model.__rebuild_LLM(
-            llm_datas=model_data["llm"], optim_datas=model_data["optimizer"],
-            config=config_datas, device=device, compile=compile)
+            llm_datas=model_data["llm"],
+            optim_datas=model_data["optimizer"],
+            config=config_datas,
+            device=device,
+            compile=compile,
+        )
         return model
 
     def __rebuild_LLM(
-            self, llm_datas: dict, optim_datas: dict,
-            config: GPTConfig, device: torch.device, compile:bool) -> None:
+        self,
+        llm_datas: dict,
+        optim_datas: dict,
+        config: GPTConfig,
+        device: torch.device,
+        compile: bool,
+    ) -> None:
         """utilitaire a appeler aprés avoir load un model\n
         principalement repris de nanochat.checkpoint_manager.build_model"""
         assert isinstance(config, GPTConfig)
@@ -305,9 +355,9 @@ class Model():
             # Convert bfloat16 tensors to float for CPU inference
             llm_datas = {
                 k: v.float() if v.dtype == torch.bfloat16 else v
-                for k, v in llm_datas.items()}
-        llm_datas = {k.removeprefix("_orig_mod."): v
-                     for k, v in llm_datas.items()}
+                for k, v in llm_datas.items()
+            }
+        llm_datas = {k.removeprefix("_orig_mod."): v for k, v in llm_datas.items()}
         with torch.device("meta"):
             llm = GPT(config)
         # Load the model state
@@ -324,23 +374,34 @@ class Model():
         self.optimizer = optim
 
     def train(
-            self, dataset: SVGDataset, batch_size: int,
-            nbEpoches: int, timeLimite: float, verbose: Verbose) -> None:
+        self,
+        dataset: SVGDataset,
+        batch_size: int,
+        nbEpoches: int,
+        timeLimite: float,
+        verbose: Verbose,
+    ) -> None:
         nbEpoch_done: int = 0
         time_start: float = time.perf_counter()
-        def time_since_start(): return (time.perf_counter()-time_start)
+
+        def time_since_start():
+            return time.perf_counter() - time_start
+
         progress_epoches = ProgressBar.simpleConfig(
-            nbSteps=nbEpoches, taskName="epoches", useEma=False, updateEvery=0.0)
+            nbSteps=nbEpoches, taskName="epoches", useEma=False, updateEvery=0.0
+        )
         # eta_epoches = RemainingTime_mean(finalAmount=nbEpoches, start=True)
         # eta_time = RemainingTime_mean(finalAmount=timeLimite, start=True)
 
         while (nbEpoch_done < nbEpoches) and (time_since_start() < timeLimite):
             # => can do another epoch
             dataloader = DataLoader(
-                dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+                dataset, batch_size=batch_size, shuffle=True, num_workers=0
+            )
             accum = MetricsAccumulator(usage="train", topK=5)
             progress_batches = ProgressBar.simpleConfig(
-                nbSteps=len(dataloader), taskName="batches", useEma=1/30)
+                nbSteps=len(dataloader), taskName="batches", useEma=1 / 30
+            )
 
             epochID = self.nb_epoches_done
             batch_iterator = iter(dataloader)
@@ -348,7 +409,7 @@ class Model():
             epoch_start_time = time.perf_counter()
             if verbose >= Verbose.perEpoch:
                 print(f"\nstarting epoch: {nbEpoch_done+1}")
-            
+
             while True:
                 # get the batch (not a for loop so we can mesure the duration of 'next')
                 with self._prof.mesure("iterDataloader"):
@@ -363,8 +424,7 @@ class Model():
                     dtIndexes: list[int] = datas["datasetIndex"].tolist()
                     svgIndexes: list[int] = datas["svgIndex"].tolist()
                     chunckIndexes: list[int] = datas["chunckIndex"].tolist()
-                    nbChars: int = sum([len(dataset.chunks[i].text)
-                                       for i in dtIndexes])
+                    nbChars: int = sum([len(dataset.chunks[i].text) for i in dtIndexes])
                 # send the tokens to the device
                 with self._prof.mesure("toDevice"):
                     inputs = inputs.to(torch.int64).to(self.device)
@@ -375,7 +435,8 @@ class Model():
                 # compute the loss and the metrics
                 with self._prof.mesure("metrics&loss"):
                     loss = accum.batch_logits_metrics(
-                        logits, targets, totalNbChars=nbChars)
+                        logits, targets, totalNbChars=nbChars
+                    )
                 # backward pass and step
                 with self._prof.mesure("zero_grad"):
                     self.optimizer.zero_grad()
@@ -392,14 +453,14 @@ class Model():
             # => epoch finished
             nbEpoch_done += 1
             self.__nb_epoches_done += 1
-            epoch_duration = (time.perf_counter() - epoch_start_time)
+            epoch_duration = time.perf_counter() - epoch_start_time
             # compute the metrics
             metrics = accum.get_metrics()
             for name in metrics.keys():
-                self.historique.add_metric(
-                    name, metrics[name], epoch_id=epochID)
+                self.historique.add_metric(name, metrics[name], epoch_id=epochID)
             self.historique.add_metric(
-                "epoch_duration", epoch_duration, epoch_id=epochID)
+                "epoch_duration", epoch_duration, epoch_id=epochID
+            )
             self.wandb_show_metrics(join=False)
             self.save(f"checkpoint-{self.__nb_epoches_done}")
             # infos post epoches
@@ -411,30 +472,35 @@ class Model():
                 if not progress_epoches.estimator.isFinished():
                     print()  # step don't produce a newline
                 print(
-                    f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}")
+                    f"trained on: {nb_batch_done} batch ({len(dataset)} chuncks) in {prettyTime(epoch_duration)}"
+                )
                 print(
-                    f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec")
+                    f" -> {nb_batch_done/epoch_duration:.2f} batch/sec | {len(dataset)/epoch_duration:.2f} chuncks/sec"
+                )
 
-                def gm(metric): return self.historique.get_metric_value(
-                    metric, epoch_id=epochID)
+                def gm(metric):
+                    return self.historique.get_metric_value(metric, epoch_id=epochID)
+
                 print(
-                    f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}")
+                    f" -> CE: {gm('CE_train'):.4g} | PPL: {gm('PPL_train'):.4g} | top-1: {gm('TOP-1_train'):.2%}"
+                )
 
     @torch.inference_mode()
-    def __generate_internal(self, tokens: list[int], temperature: float, top_k: int | None):
+    def __generate_internal(
+        self, tokens: list[int], temperature: float, top_k: int | None
+    ):
         assert isinstance(tokens, list)
         device = self.device
-        ids = torch.tensor([tokens], dtype=torch.long,
-                           device=device)  # add batch dim
+        ids = torch.tensor([tokens], dtype=torch.long, device=device)  # add batch dim
         while True:
             if ids.size(1) > self.context_size:
                 # cut the context to the right size
-                ids = ids[:, -self.context_size:]
+                ids = ids[:, -self.context_size :]
             logits = self.llm.forward(ids)  # (B, T, vocab_size)
             logits = logits[:, -1, :]  # (B, vocab_size)
             if top_k is not None and top_k > 0:
                 v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-                logits[logits < v[:, [-1]]] = -float('Inf')
+                logits[logits < v[:, [-1]]] = -float("Inf")
             if temperature > 0:
                 logits = logits / temperature
                 probs = torch.nn.functional.softmax(logits, dim=-1)
@@ -447,10 +513,15 @@ class Model():
 
     @torch.no_grad
     def generate_flow(
-            self, start: None | str | list[int], decode_batch: int,
-            temperature: float, top_k: int | None,
-            max_tokens: int | None, max_time: float | None,
-            statsPtr: Pointer[GenerationStats] | None = None) -> Generator[str, None, None]:
+        self,
+        start: None | str | list[int],
+        decode_batch: int,
+        temperature: float,
+        top_k: int | None,
+        max_tokens: int | None,
+        max_time: float | None,
+        statsPtr: Pointer[GenerationStats] | None = None,
+    ) -> Generator[str, None, None]:
         """genere les tokens suivants a la volée, \
             s'arrete tout seul a la fin d'un fichier ou aux limites données\n
         args:
@@ -475,17 +546,22 @@ class Model():
         if isinstance(start, str):
             start = self.tokenizer.encode(start)
         tokens_generator = self.__generate_internal(
-            start, temperature=temperature, top_k=top_k)
+            start, temperature=temperature, top_k=top_k
+        )
         # setup the vars
         if statsPtr is None:
             statsPtr = Pointer()
         if not statsPtr.isSetted():
             statsPtr.value = GenerationStats(
-                nb_tokens=0, gen_time=0.0, stop_reason="not stoped yet ...")
+                nb_tokens=0, gen_time=0.0, stop_reason="not stoped yet ..."
+            )
         # => ptr is setted
         nb_tokens_gen: int = 0
         start_time: float = time.perf_counter()
-        def time_since_start(): return (time.perf_counter() - start_time)
+
+        def time_since_start():
+            return time.perf_counter() - start_time
+
         tokens_buffer: list[int] = []
         # find the end token value
         _ = self.tokenizer.encode(END_TOKEN)

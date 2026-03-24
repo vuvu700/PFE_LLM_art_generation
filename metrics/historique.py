@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 
 
-class Historique():
+class Historique:
 
     def __init__(self):
         self.informations: dict[str, dict[int, float | int]] = {}
@@ -32,7 +32,7 @@ class Historique():
         return list(self.informations.keys())
 
     # voir commentaires
-    def get_commentaries_value(self,  epoch_id: int):
+    def get_commentaries_value(self, epoch_id: int):
         return self.commentaries.get(epoch_id)
 
     def get_all_commentaries(self):
@@ -42,12 +42,14 @@ class Historique():
     def save(self, historique_path: Path):
         historique_path = historique_path.with_suffix(".json")
         directory = historique_path.parent
-        assert directory.exists(), \
-            FileNotFoundError(
-                f"missing directory to save the historique: {directory.as_posix()}")
+        assert directory.exists(), FileNotFoundError(
+            f"missing directory to save the historique: {directory.as_posix()}"
+        )
         print(f"saving the historique to: {historique_path.as_posix()}")
-        data = {"informations": self.informations,
-                "commentaries": dict(self.commentaries)}
+        data = {
+            "informations": self.informations,
+            "commentaries": dict(self.commentaries),
+        }
         with open(historique_path, "w") as f:
             json.dump(data, f)
 
@@ -55,9 +57,9 @@ class Historique():
     def load(cls, historique_path: Path):
         historique_path = historique_path.with_suffix(".json")
         directory = historique_path.parent
-        assert directory.exists(), \
-            FileNotFoundError(
-                f"missing directory to load the historique: {directory.as_posix()}")
+        assert directory.exists(), FileNotFoundError(
+            f"missing directory to load the historique: {directory.as_posix()}"
+        )
         print(f"loading the historique from: {historique_path.as_posix()}")
         with open(historique_path, "r") as f:
             data = json.load(f)
@@ -68,7 +70,7 @@ class Historique():
             historique.informations[metric] = {}
             for epoch, value in values.items():
                 historique.informations[metric][int(epoch)] = value
-        
+
         for epoch, comments in data.get("commentaries", {}).items():
             historique.commentaries[int(epoch)] = comments
 

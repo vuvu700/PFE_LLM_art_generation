@@ -13,8 +13,16 @@ from holo.files import get_subdirectorys
 class SavedAiTree(PrettyfyClass, PartialyFinalClass):
     """handle the detection of folders of version in \
     the directory where an AI is saved"""
-    __slots__ = ("aiDirectory", "__maxVersion", "__versionsFolders", )
-    __finals__ = {"aiDirectory", "__versionsFolders", }
+
+    __slots__ = (
+        "aiDirectory",
+        "__maxVersion",
+        "__versionsFolders",
+    )
+    __finals__ = {
+        "aiDirectory",
+        "__versionsFolders",
+    }
 
     __ALL_VERSIONS_DIRECTORY = "versions"
 
@@ -44,7 +52,9 @@ class SavedAiTree(PrettyfyClass, PartialyFinalClass):
         self.__maxVersion = None
         # scan the versions directory
         for dirName in get_subdirectorys(allVersionsDir):
-            (matched, extracted) = patternValidation(dirName, self.__VERSION_FOLDER_PATTERN)
+            matched, extracted = patternValidation(
+                dirName, self.__VERSION_FOLDER_PATTERN
+            )
             if matched is False:
                 continue  # => this isn't a version folder
             # => this is a version dir
@@ -72,7 +82,7 @@ class SavedAiTree(PrettyfyClass, PartialyFinalClass):
         if currMax is None:
             return 1
         else:
-            return (currMax + 1)
+            return currMax + 1
 
     def getVersionDirectory(self, versionID: int) -> Path:
         if versionID not in self.__versionsFolders.keys():
@@ -83,7 +93,8 @@ class SavedAiTree(PrettyfyClass, PartialyFinalClass):
         """return the path to the "next" version using the given name"""
         newDir = self.allVersionsDir.joinpath(
             f"{self.__VERSION_PREFIX}_"
-            f"{self.currentNextVersion:0{self.__VERSION_NB_DIGITS}d}_{versionName}")
+            f"{self.currentNextVersion:0{self.__VERSION_NB_DIGITS}d}_{versionName}"
+        )
         if newDir.parent.as_posix() != self.allVersionsDir.as_posix():
             raise ValueError(f"the version name: {versionName!r} isn't valid")
         return newDir
