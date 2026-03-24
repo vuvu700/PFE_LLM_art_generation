@@ -55,7 +55,7 @@ def generate_cli(
 
     print(f"trained for {model.nb_epoches_done} epoches")
     for k, v in model.historique.get_all_historique().items():
-        print(colored(f"{k}: {v.get((model.nb_epoches_done-1), None):.4g}", "green"))  # type: ignore
+        print(colored(f"{k}: {v.get((model.nb_epoches_done - 1), None):.4g}", "green"))  # type: ignore
 
     if N_start != None:
         print(colored("loading dataset", "blue"))
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         "--N",
         type=int,
         default=None,
-        help="le fichier sur lequel on veut que l'IA continue d'ecrire, (non specifier -> genere un fichier a partir de rien)",
+        help="pour choisir le numero de fichier du dataset a charger pour le continuer (non specifier -> genere un fichier a partir de rien)",
     )
     parser.add_argument(
         "--time_limit",
@@ -159,7 +159,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    import torch, gc
+    import torch
+    import gc
     from dataset import svg_dataset
     from LLM.model import Model, GenerationStats
 
