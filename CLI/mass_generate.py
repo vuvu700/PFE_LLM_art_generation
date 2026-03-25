@@ -25,7 +25,7 @@ def mass_generate(
     temperature: float = 1.0,
 ):
     # global setup
-    nbPasses: int = 1
+    nbPasses: int = 2
     timeLimites: list[int] = [60*5, 60*10, 60*15]
     # setup the save directory
     saveDir = f"{model_name}_T{round(temperature, 4)}_K{top_k}"
