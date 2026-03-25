@@ -13,13 +13,21 @@ from holo.pointers import Pointer
 from paths_cfg import GENERATIONS_DIRECTORY
 
 
-def get_start_text(start_file: Path) -> str:
+def get_start_text(
+        start_file: Path,
+        absolute_gcode: bool,
+        relative_gcode: bool,) -> str:
     """return the text to start with (will remove trailing </svg> if needed)"""
     import dataset.svg_dataset
     with open(start_file, mode="r") as file:
         content = file.read(-1)
-    a = dataset.svg_dataset.clean_svg(content)
-    return a.removesuffix("</svg>")
+    svgText = dataset.svg_dataset.clean_svg(content)
+    if absolute_gcode or relative_gcode:
+        text = dataset.svg_dataset.svg_to_gcodes(
+            svgText, relative=relative_gcode,
+        ).removesuffix("G01 X-0")
+    else: text = svgText.removesuffix("</svg>")
+    return text
 
 def generate_cli(
     start_file: Path|None,
@@ -29,7 +37,9 @@ def generate_cli(
     time_limit: int | None,
     top_k: int | None,
     max_tokens: int | None,
-    temperature: float = 1.0,
+    temperature: float,
+    absolute_gcode: bool,
+    relative_gcode: bool,
 ):
     """
     Boucle pour la generation de svg en ligne de commande.
@@ -70,7 +80,11 @@ def generate_cli(
 
     if start_file is not None:
         print(colored("loading start file", "blue"))
-        start = get_start_text(start_file)[: model.context_size]
+        start = get_start_text(
+            start_file=start_file, 
+            absolute_gcode=absolute_gcode,
+            relative_gcode=relative_gcode,
+        )[: model.context_size]
     else:
         start = None
 
@@ -165,6 +179,18 @@ if __name__ == "__main__":
         default=1.0,
         help="temperature pour la generation",
     )
+    parser.add_argument(
+        "--absolute_gcode",
+        "--abs",
+        action="store_true",
+        help="active le gcode en utilisant les coordonnees absolues",
+    )
+    parser.add_argument(
+        "--relative_gcode",
+        "--rel",
+        action="store_true",
+        help="active le gcode en utilisant les coordonnees absolues",
+    )
 
     args = parser.parse_args()
 
@@ -178,5 +204,7 @@ if __name__ == "__main__":
         top_k=args.top_k,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
+        absolute_gcode=args.absolute_gcode,
+        relative_gcode=args.relative_gcode,
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))

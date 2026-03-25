@@ -22,7 +22,9 @@ def mass_generate(
     model_name: str,
     version_ID: int,
     top_k: int | None,
-    temperature: float = 1.0,
+    temperature: float,
+    absolute_gcode: bool,
+    relative_gcode: bool,
 ):
     # global setup
     nbPasses: int = 2
@@ -43,7 +45,8 @@ def mass_generate(
                 start_file=start_file, save_generate=f"{saveDir}/{saveFile}",
                 model_name=model_name, version_ID=version_ID,
                 time_limit=time_limite, max_tokens=999_999_999,
-                top_k=top_k, )
+                top_k=top_k, temperature=temperature,
+                absolute_gcode=absolute_gcode, relative_gcode=relative_gcode)
             with open(saveDirPath.joinpath("metadatas.txt"), mode="a") as metaFile:
                 metaFile.write(f"finished: {saveFile} with: {stats.value}\n")
 
@@ -80,6 +83,18 @@ if __name__ == "__main__":
         default=1.0,
         help="temperature pour la generation",
     )
+    parser.add_argument(
+        "--absolute_gcode",
+        "--abs",
+        action="store_true",
+        help="active le gcode en utilisant les coordonnees absolues",
+    )
+    parser.add_argument(
+        "--relative_gcode",
+        "--rel",
+        action="store_true",
+        help="active le gcode en utilisant les coordonnees absolues",
+    )
 
     args = parser.parse_args()
 
@@ -90,5 +105,7 @@ if __name__ == "__main__":
         version_ID=args.version_ID,
         top_k=args.top_k,
         temperature=args.temperature,
+        absolute_gcode=args.absolute_gcode,
+        relative_gcode=args.relative_gcode,
     )
     print(colored(f"Total time: {prettyTime(datetime.now() - tStart)}", "blue"))
