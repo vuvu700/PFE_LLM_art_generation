@@ -172,6 +172,9 @@ class Model:
         print(
             f"on device: {self.device!r}, with effective context_size: {self.context_size}"
         )
+        flopsPerTokens: int = self.llm.estimate_flops()
+        print(f"-> {prettyFlops(flopsPerTokens)}/token ")
+        print(f"-> {prettyFlops(flopsPerTokens*self.context_size)} with full context")
 
     @staticmethod
     def __build_model_meta(
@@ -590,3 +593,17 @@ class Model:
         statsPtr.value.update(nb_tokens=nb_tokens_gen, gen_time=time_since_start())
         if len(tokens_buffer) > 0:
             yield self.tokenizer.decode(tokens_buffer)
+
+
+def prettyFlops(flops: "int|float") -> str:
+    """print a data size value in a more redable way"""
+    if flops > 1e12:
+        return f"{round(flops/1e12, 3)} TFLOPs"
+    elif flops > 1e9:
+        return f"{round(flops/1e9, 3)} GFLOPs"
+    elif flops > 1e6:
+        return f"{round(flops/1e6, 3)} MFLOPs"
+    elif flops > 1e3:
+        return f"{round(flops/1e3, 3)} kFLOPs"
+    else:
+        return f"{flops} FLOPs"

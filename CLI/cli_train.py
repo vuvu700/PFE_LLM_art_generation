@@ -11,6 +11,7 @@ from .presets import PRESETS
 from holo.prettyFormats import prettyTime
 from paths_cfg import TOKENIZER_SAVE_DIRECTORY
 
+
 def train_cli(
     dataset_path: Path,
     save_name: str,

@@ -13,16 +13,23 @@ from holo.pointers import Pointer
 from paths_cfg import GENERATIONS_DIRECTORY
 
 
+def get_start_text(start_file: Path) -> str:
+    """return the text to start with (will remove trailing </svg> if needed)"""
+    import dataset.svg_dataset
+    with open(start_file, mode="r") as file:
+        content = file.read(-1)
+    a = dataset.svg_dataset.clean_svg(content)
+    return a.removesuffix("</svg>")
+
 def generate_cli(
-    dataset_path: Path,
+    start_file: Path|None,
     save_generate: str,
     model_name: str,
     version_ID: int,
-    N_start: int | None,
     time_limit: int | None,
     top_k: int | None,
     max_tokens: int | None,
-    temperature: float = 1.0
+    temperature: float = 1.0,
 ):
     """
     Boucle pour la generation de svg en ligne de commande.
@@ -42,6 +49,9 @@ def generate_cli(
     top_k: choix du top_k pour le model
     max_tokens: max des tokens que l'on ne souhaite pas depasser
     """
+    import torch
+    from LLM.model import Model, GenerationStats
+    
     try:
         torch.cuda.empty_cache()
         del model  # type: ignore
@@ -58,46 +68,38 @@ def generate_cli(
     for k, v in model.historique.get_all_historique().items():
         print(colored(f"{k}: {v.get((model.nb_epoches_done - 1), None):.4g}", "green"))  # type: ignore
 
-    if N_start != None:
-        print(colored("loading dataset", "blue"))
-        dataset = svg_dataset.SVGDataset(
-            dataset_path,
-            context_size=model.context_size,
-            tokenizer=model.tokenizer.encode,
-            decoder=model.tokenizer.decode,
-        )
-        print(colored(f"using: {dataset.samples[N_start].svg_file}", "blue"))
-        start = dataset.samples[N_start].txt[: model.context_size]
-        del dataset
-        gc.collect()
-
+    if start_file is not None:
+        print(colored("loading start file", "blue"))
+        start = get_start_text(start_file)[: model.context_size]
     else:
         start = None
 
     print(colored("start generating", "blue"))
     statsPtr: Pointer[GenerationStats] = Pointer()
     save_generate_path = GENERATIONS_DIRECTORY / save_generate
+    singleLine = SingleLinePrinter(None)
     with open(save_generate_path, "w") as f:
-        singleLine = SingleLinePrinter(None)
         if start is not None:
             f.write(start)
+        else: pass # => empty the file
 
-        for txt in model.generate_flow(
-            start=start,
-            decode_batch=64,
-            temperature=temperature,
-            top_k=top_k,
-            max_tokens=max_tokens,
-            max_time=time_limit,
-            statsPtr=statsPtr,
-        ):
-            f.write(txt)
+    for txt in model.generate_flow(
+        start=start,
+        decode_batch=64,
+        temperature=temperature,
+        top_k=top_k,
+        max_tokens=max_tokens,
+        max_time=time_limit,
+        statsPtr=statsPtr,
+    ):
+        with open(save_generate_path, "a") as f:
+            f.write(txt) # append the new text
 
-            singleLine.print(
-                f"progress: {statsPtr.value.nb_tokens:_d} tokens generated "
-                f"(running for {prettyTime(statsPtr.value.gen_time)})"
-            )
-        singleLine.newline()
+        singleLine.print(
+            f"progress: {statsPtr.value.nb_tokens:_d} tokens generated "
+            f"(running for {prettyTime(statsPtr.value.gen_time)})"
+        )
+    singleLine.newline()
 
     print(colored(f"finished generating ({statsPtr.value.stop_reason})", "green"))
     print(
@@ -106,12 +108,17 @@ def generate_cli(
             "blue",
         )
     )
+    return statsPtr
 
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generating Model")
     parser.add_argument(
-        "--dataset_path", "--d", type=Path, required=True, help="Chemin du dataset"
+        "--start_file", "--start", type=Path, default=None, 
+        help="pour choisir un fichier a utiliser comme debut de generation, " \
+            "utilise le début du ficher et non la fin, "\
+                "doit etre une svg valide, le </svg> sera retiré" \
+                    "(non specifier -> genere un fichier a partir de rien)"
     )
     parser.add_argument(
         "--save_generate",
@@ -129,12 +136,6 @@ if __name__ == "__main__":
         type=int,
         required=True,
         help="numero de version du model",
-    )
-    parser.add_argument(
-        "--N",
-        type=int,
-        default=None,
-        help="pour choisir le numero de fichier du dataset a charger pour le continuer (non specifier -> genere un fichier a partir de rien)",
     )
     parser.add_argument(
         "--time_limit",
@@ -167,18 +168,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    import torch
-    import gc
-    from dataset import svg_dataset
-    from LLM.model import Model, GenerationStats
-
     tStart = datetime.now()
     generate_cli(
-        dataset_path=args.dataset_path,
+        start_file=args.start_file,
         save_generate=args.save_generate,
         model_name=args.model_name,
         version_ID=args.version_ID,
-        N_start=args.N,
         time_limit=args.time_limit,
         top_k=args.top_k,
         max_tokens=args.max_tokens,
