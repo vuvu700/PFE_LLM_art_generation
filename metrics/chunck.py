@@ -1,3 +1,12 @@
+"""
+ce fichier n'est pas utilisé car il nous aurrait permis de monitorer
+la quantité d'erreures dans les fichiers generés lors de l'entrainement
+
+mais cela s'est revelé etre trop couteux en comparaison de l'entrainement
+
+par respect pour jean qui s'ets donné du mal pour le codé, on a gardé le code
+"""
+
 import time
 import random
 from collections import defaultdict
@@ -8,23 +17,6 @@ import torch.nn.functional as F
 
 from tokenizer_pfe.tokenizer_project import Tokenizer
 from dataset.svg_dataset import _Tokens, SVGDataset, IGNORE_INDEX
-
-"""a partir des `logits` en entrée, fait un sampling dessus et les assemble pour renvoyer les differents svg qu'ils composent\n
-
-    les parametres:
-        - `logits`: {(svgIndex, chunckIndex) -> logits of shape (1, CTX_SIZE ou inferieur, VOCAB_SIZE)}
-        NOTE: la presence de svgIndex implique que les logits en entrée peuvent provenire de plusieurs fichiers
-            toutefois il est garenti que l'ensemble des logits d'un fichier sont donnés en entrée dans `logits` (pas de chunck manquants)
-        - `tokenizer`: le tokenizer du projet a utiliser
-        - `temperature`, `top_k`, `seed`: temperature, topk, seed pour le sampling des logits
-
-    etapes:
-        - input -> LLM -> logits -> sampling -> tokens -> assemblage des chuncks de tokens -> decodage des tokens -> text(svg)
-    
-    renvois:
-        - {svgIndex -> text du svg reconstitué a partir des chuncks assemblés et decodés}
-
-"""
 
 
 class ChunckAssembler:

@@ -2,6 +2,8 @@
 pour ajouter un preset il suffit de rajouter une ligne avec les differents parametres
 """
 
+# en commentaires les utilisations en VRAM pour entrainer les models
+# pour l'inference ils utilisent beaucoup moins
 PRESETS = {
     "1.6M": dict(depth=6, head_dim=128, context_size=4096, nb_heads_mult=1),  # 1.8Go
     "1.6M_ext": dict(

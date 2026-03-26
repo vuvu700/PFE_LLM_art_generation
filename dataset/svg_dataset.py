@@ -15,12 +15,15 @@ from tokenizer_pfe.tokenizer_project import START_TOKEN, END_TOKEN
 _Tokens = numpy.ndarray[tuple[int, ...], numpy.dtype[numpy.int32]]
 """works like a list of tokens"""
 IGNORE_INDEX = -1
+"""le token de padding"""
 
 parser = etree.XMLParser(remove_comments=True, remove_blank_text=True)
 DEFAULT_TOKENIZER: Callable[[str], list[int]] = lambda svg_text: list(
     map(ord, svg_text)
 )
+"""tokenizer par defaut (extremement rapide, parfait pour loader le dataset sans tokenizer vraiment)"""
 DEFAULT_DECODER: Callable[[list[int]], str] = lambda tokens: "".join(map(chr, tokens))
+"""tokenizer par defaut (extremement rapide, parfait pour loader le dataset sans tokenizer vraiment)"""
 
 # Normalization constants
 DEFAULT_SVG_WIDTH = 900  # for testing, will replace by max for svg
@@ -30,6 +33,11 @@ GCODE_HEIGHT = 9.375
 
 
 class SVGSample:
+    """
+    contiens les infos des svg nettoyés
+    (si ils sont converti gcode, ca sera le gcode qui y est stocké)
+    """
+
     def __init__(self, txt: str, svg_file: Path):
         self.txt: str = txt
         self.svg_file: Path = svg_file
@@ -43,6 +51,10 @@ class SVGSample:
 
 @attrs.frozen
 class ChunckInfos:
+    """
+    informations sur les chuncks stockés dans le datasets
+    """
+
     datasetIndex: int
     """index du chunck dans le dataset"""
     svgIndex: int
@@ -53,6 +65,10 @@ class ChunckInfos:
 
 @attrs.frozen
 class DatasetChunck:
+    """
+    le contenu des chuncks dans le daatset pour permetre l'entrainement
+    """
+
     tokensInput: _Tokens
     """tokens du chunck en input du LLM"""
     tokensOutput: _Tokens
@@ -64,6 +80,10 @@ class DatasetChunck:
 
 
 class BatchDatas(TypedDict):
+    """
+    typage du contenu de chaque chunck avant d'ere regroupés par le dataloader
+    """
+
     tokens: _Tokens
     targets: _Tokens
     datasetIndex: int
@@ -72,6 +92,7 @@ class BatchDatas(TypedDict):
 
 
 def clean_svg(svg: str) -> str:
+    """normalize les SVG"""
     root = etree.fromstring(svg.encode("utf-8"), parser=parser)
     return etree.tostring(root, encoding="unicode", pretty_print=False)
 
@@ -149,6 +170,8 @@ def clean_gcode(output):
 
 
 def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
+    """load l'ensemble des fichiers svg dans le repertoir ciblé
+    renvois les fichier normalisés"""
     svg_samples: list[SVGSample] = []
     for svg_file in sorted(Path(svg_dir).glob("*.svg")):
         with open(svg_file, "r", encoding="utf-8") as f:
@@ -215,6 +238,10 @@ def svg_to_gcodes(svg_text: str, relative: bool = False) -> str:
 
 
 class SVGDataset(Dataset):
+    """
+    le dataste de SVG / Gcode qui permet l'entrainement sur les données
+    """
+
     def __init__(
         self,
         svg_dir: Path,
@@ -225,6 +252,19 @@ class SVGDataset(Dataset):
         use_gcode: bool = False,
         use_relative_gcode: bool = False,
     ):
+        """
+        svg_dir: chemain vers le repertoir de SVG
+        context_size: taille de context du modele
+        tokenizer: la fonction d'encodage de tokenization a utiliser
+            la fonction par defaut est bcp plus rapide que un vrais tokenizer
+        decoder: idem que `tokenizer` mais pour decoder le text
+        fillMissingTokens: ajoute du padding sur les sequences non completes
+            DOIT ETRE True POUR L'ENTRAINEMENT
+        use_gcode: permet d'activer la convertion en gcode
+        use_relative_gcode: si le gcode est acivé:
+            True -> utilise des coordonées relatives
+            False -> utilise des coordonées absolut
+        """
         assert context_size % 2 == 0, f"la contexte size doit absolument etre paire"
         self.context_size: int = context_size
         self.tokenizer = tokenizer

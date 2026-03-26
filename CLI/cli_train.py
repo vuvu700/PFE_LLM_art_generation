@@ -26,18 +26,22 @@ def train_cli(
 ):
     """
     Boucle pour generer l'entrainement en ligne de commande.
-    Exemple d'execution(a la racine):
-    python -m CLI.cli_train --dataset_path dataset/samples_100 --save_name models_1.6_tests --preset 1.6M --max_epochs 5 --time_limit 15 --tokenizer_name our_tokenizer.json
 
-    Pour voir la description des parametres:
-    python -m CLI.cli_train -h
-
-    dataset_path: le chemin du dataset
-    save_name: nom de sauvegarde du modele
-    preset: fixations de parametre du LLM predefis pour l'entrainement de chaque modele. ATTENTION: le definir avant
-    max_epochs: nombre maximum d'epochs sur lequel on veut s'entrainer.
-    time_limit: temps limite d'entrainement (en minutes)
-    tokenizer_name: nom du tokenizer que l'on souhaite utiliser (dans le dossier tokenizer_save)
+    args:
+        dataset_path: le chemin du dataset
+        save_name: nom de sauvegarde du modele (peut etre un nom existant)
+        versionID: pour selectioner une version specifique du model
+            dont on reprendra l'entrainement
+        preset: les parametre du LLM predefis pour l'entrainement de chaque modele.
+            donnés dans le fichier CLI/presets.py
+        max_epochs: nombre maximum d'epochs sur lequel on veut s'entrainer.
+        time_limit: temps limite d'entrainement (en minutes)
+            si une epoche est commencée elle n'est pas interompue par la limite de temps
+        tokenizer_name: nom du tokenizer que l'on souhaite utiliser (dans le dossier tokenizer_save)
+            si il n'existe pas, cela vas le creer automatiquement
+        absolute_gcode: active le gcode en utilisant les coordonnees absolues
+        relative_gcode: active le gcode en utilisant les coordonnees absolues
+        wandb: permet d'activer / desactiver l'utilisation de wandb pour monitorer les entrainements
     """
     use_gcode: bool = absolute_gcode or relative_gcode
     if not dataset_path.exists():
@@ -133,31 +137,49 @@ def train_cli(
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Training Model")
-    parser.add_argument("--dataset_path", "--d", type=Path, help="Chemin du dataset")
+    parser.add_argument("--dataset_path", "--d", type=Path, help="le chemin du dataset")
     parser.add_argument(
-        "--save_name", "--s", type=str, help="nom du model a sauvegarder"
+        "--save_name",
+        "--s",
+        type=str,
+        help="nom de sauvegarde du modele (peut etre un nom existant)",
+    )
+    parser.add_argument(
+        "--versionID",
+        "--v",
+        type=int,
+        required=False,
+        default=None,
+        help="pour selectioner une version specifique du model "
+        "dont on reprendra l'entrainement",
     )
     parser.add_argument(
         "--preset",
         "--p",
         type=str,
         choices=PRESETS.keys(),
-        help="choix du model pour le preset de config",
+        help="les parametre du LLM predefis pour l'entrainement de chaque modele. "
+        "donnés dans le fichier CLI/presets.py",
     )
     parser.add_argument(
-        "--max_epochs", "--m", type=int, help="maximum d'epochs d'entrainement"
+        "--max_epochs",
+        "--m",
+        type=int,
+        help="nombre maximum d'epochs sur lequel on veut s'entrainer.",
     )
     parser.add_argument(
         "--time_limit",
         "--time",
         type=int,
-        help="Limite de temps en minutes, (finit l'epoch sur lequel le model s'entraine avant de s'arreter)",
+        help="temps limite d'entrainement (en minutes) "
+        "si une epoche est commencée elle n'est pas interompue par la limite de temps",
     )
     parser.add_argument(
         "--tokenizer_name",
         "--t",
         type=str,
-        help="Nom du tokenizer a utiliser (dans le dossier tokenizer_save)",
+        help="nom du tokenizer que l'on souhaite utiliser (dans le dossier tokenizer_save) "
+        "si il n'existe pas, cela vas le creer automatiquement",
     )
     parser.add_argument(
         "--absolute_gcode",
@@ -170,14 +192,6 @@ if __name__ == "__main__":
         "--rel",
         action="store_true",
         help="active le gcode en utilisant les coordonnees absolues",
-    )
-    parser.add_argument(
-        "--versionID",
-        "--v",
-        type=int,
-        required=False,
-        default=None,
-        help="permet de train a partir d'une version existante d'un modele",
     )
     parser.add_argument(
         "--wandbOff",

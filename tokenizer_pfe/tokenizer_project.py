@@ -10,6 +10,7 @@ SPECIAL_TOKENS = [START_TOKEN, END_TOKEN]
 
 
 class Tokenizer(HuggingFaceTokenizer):
+    """wrapper sur le tokenizer de nanochat pour l'adapter a nos besoins"""
 
     @overload
     def encode(self, text: str) -> list[int]: ...

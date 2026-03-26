@@ -540,6 +540,8 @@ class Model:
             `max_time`: la limite de temps de generation
                 int -> nombre max de secondes a ne pas depasser
                 None -> pas de limite de temps
+            `statsPtr`: 
+                permet de recuperer les infos de la generation en temps reel
         yield: les tokens deja decodés par batch
         return: the reason why it stoped
         """

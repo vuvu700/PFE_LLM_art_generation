@@ -14,31 +14,36 @@ from paths_cfg import GENERATIONS_DIRECTORY
 
 
 def get_text(
-        start_file: Path,
-        absolute_gcode: bool,
-        relative_gcode: bool,) -> str:
+    start_file: Path,
+    absolute_gcode: bool,
+    relative_gcode: bool,
+) -> str:
     """
-    renvois le text du fichier cible dans le format choisit, 
+    renvois le text du fichier cible dans le format choisit,
     en enlevant l'instruction de fin (</svg> pour les svg, idem pour le gcode)
-    
-    args: 
+
+    args:
         start_file: chemain vers le fichier cible
         absolute_gcode: pour transformer le SVG en gcode absolut
         relative_gcode: pour transformer le SVG en gcode relatif
     """
     import dataset.svg_dataset
+
     with open(start_file, mode="r") as file:
         content = file.read(-1)
     svgText = dataset.svg_dataset.clean_svg(content)
     if absolute_gcode or relative_gcode:
         text = dataset.svg_dataset.svg_to_gcodes(
-            svgText, relative=relative_gcode,
+            svgText,
+            relative=relative_gcode,
         ).removesuffix("G01 X-0")
-    else: text = svgText.removesuffix("</svg>")
+    else:
+        text = svgText.removesuffix("</svg>")
     return text
 
+
 def generate_cli(
-    start_file: Path|None,
+    start_file: Path | None,
     save_generate: str,
     model_name: str,
     version_ID: int,
@@ -61,12 +66,12 @@ def generate_cli(
         max_tokens: max des tokens que l'on ne souhaite pas depasser
         top_k: choix du top_k pour le model
         temperature: temperature de generation
-        absolute_gcode: pour transformer le SVG en gcode absolut
-        relative_gcode: pour transformer le SVG en gcode relatif
+        absolute_gcode: active le gcode en utilisant les coordonnees absolues
+        relative_gcode: active le gcode en utilisant les coordonnees absolues
     """
     import torch
     from LLM.model import Model, GenerationStats
-    
+
     try:
         torch.cuda.empty_cache()
         del model  # type: ignore
@@ -86,7 +91,7 @@ def generate_cli(
     if start_file is not None:
         print(colored("loading start file", "blue"))
         start = get_text(
-            start_file=start_file, 
+            start_file=start_file,
             absolute_gcode=absolute_gcode,
             relative_gcode=relative_gcode,
         )[: model.context_size]
@@ -100,7 +105,8 @@ def generate_cli(
     with open(save_generate_path, "w") as f:
         if start is not None:
             f.write(start)
-        else: pass # => empty the file
+        else:
+            pass  # => empty the file
 
     for txt in model.generate_flow(
         start=start,
@@ -112,7 +118,7 @@ def generate_cli(
         statsPtr=statsPtr,
     ):
         with open(save_generate_path, "a") as f:
-            f.write(txt) # append the new text
+            f.write(txt)  # append the new text
 
         singleLine.print(
             f"progress: {statsPtr.value.nb_tokens:_d} tokens generated "
@@ -133,11 +139,14 @@ def generate_cli(
 if __name__ == "__main__":
     parser = ArgumentParser(description="Generating Model")
     parser.add_argument(
-        "--start_file", "--start", type=Path, default=None, 
-        help="pour choisir un fichier a utiliser comme debut de generation, " \
-            "utilise le début du ficher et non la fin, "\
-                "doit etre une svg valide, le </svg> sera retiré" \
-                    "(non specifier -> genere un fichier a partir de rien)"
+        "--start_file",
+        "--start",
+        type=Path,
+        default=None,
+        help="pour choisir un fichier a utiliser comme debut de generation, "
+        "utilise le début du ficher et non la fin, "
+        "doit etre une svg valide, le </svg> sera retiré"
+        "(non specifier -> genere un fichier a partir de rien)",
     )
     parser.add_argument(
         "--save_generate",

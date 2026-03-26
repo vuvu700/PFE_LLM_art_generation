@@ -4,6 +4,9 @@ import json
 
 
 class Historique:
+    """
+    permet de stocker les metrics enregistrées lors de l'entrainement
+    """
 
     def __init__(self):
         self.informations: dict[str, dict[int, float | int]] = {}
