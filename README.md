@@ -14,6 +14,13 @@ TOKENIZER_SAVE_DIRECTORY="... chemin vers le dossier"
 MODELS_SAVE_DIRECTORY="..."
 GENERATIONS_DIRECTORY="..."
 ```
+
+## Utiliser un model
+
+Un model peut être ajouté manuellement en ajoutant le dossier de sauvegarde (dézippé) dans le répertoire des models ("./models_save/" par défaut).
+Dans ce dossier, on retrouve un sous-dossier "versions/" qui contient chaque checkpoint des models. 
+L'ID de version demandé par les outils CLI est le numéro et non pas le nom de la version.
+
 ## Entraînement
 
 Pour exécuter en ligne de commande l'entraînement du model :
