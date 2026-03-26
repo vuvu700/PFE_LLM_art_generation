@@ -13,11 +13,19 @@ from holo.pointers import Pointer
 from paths_cfg import GENERATIONS_DIRECTORY
 
 
-def get_start_text(
+def get_text(
         start_file: Path,
         absolute_gcode: bool,
         relative_gcode: bool,) -> str:
-    """return the text to start with (will remove trailing </svg> if needed)"""
+    """
+    renvois le text du fichier cible dans le format choisit, 
+    en enlevant l'instruction de fin (</svg> pour les svg, idem pour le gcode)
+    
+    args: 
+        start_file: chemain vers le fichier cible
+        absolute_gcode: pour transformer le SVG en gcode absolut
+        relative_gcode: pour transformer le SVG en gcode relatif
+    """
     import dataset.svg_dataset
     with open(start_file, mode="r") as file:
         content = file.read(-1)
@@ -35,29 +43,26 @@ def generate_cli(
     model_name: str,
     version_ID: int,
     time_limit: int | None,
-    top_k: int | None,
     max_tokens: int | None,
+    top_k: int | None,
     temperature: float,
     absolute_gcode: bool,
     relative_gcode: bool,
 ):
     """
     Boucle pour la generation de svg en ligne de commande.
-    Exemple d'execution(a la racine):
-    python -m CLI.cli_generate --dataset_path dataset/samples_100 --save_generate new_svg  --model_name model_5.5M_1K --version_ID 8 --N 25 --time_limit 60 --top_k 1 --max_tokens 10000000
-
-    Pour voir la description des parametres:
-    python -m CLI.cli_generate -h
-
-
-    dataset_path: le chemin du dataset
-    save_generate: nom du fichier svg que l'on souhaite generer
-    model_name: nom du modele que l'on veut load
-    version_ID: version de l'id du model ( par rapport au nombre d'epochs entrainer)
-    N_start: choix du fichier dans le dataset sur lequel l'IA va commencer a ecrire
-    time_limit: temps limite d'entrainement (en minutes)
-    top_k: choix du top_k pour le model
-    max_tokens: max des tokens que l'on ne souhaite pas depasser
+    args:
+        start_file: chemain vers le fichier cible pour commencer la generation
+            None -> commence a partir de rien
+        save_generate: nom du fichier svg que l'on souhaite generer
+        model_name: nom du modele que l'on veut load
+        version_ID: version de l'id du model (par rapport au nombre d'epochs entrainer)
+        time_limit: temps limite d'entrainement (en secondes)
+        max_tokens: max des tokens que l'on ne souhaite pas depasser
+        top_k: choix du top_k pour le model
+        temperature: temperature de generation
+        absolute_gcode: pour transformer le SVG en gcode absolut
+        relative_gcode: pour transformer le SVG en gcode relatif
     """
     import torch
     from LLM.model import Model, GenerationStats
@@ -80,7 +85,7 @@ def generate_cli(
 
     if start_file is not None:
         print(colored("loading start file", "blue"))
-        start = get_start_text(
+        start = get_text(
             start_file=start_file, 
             absolute_gcode=absolute_gcode,
             relative_gcode=relative_gcode,
@@ -159,18 +164,18 @@ if __name__ == "__main__":
         help="Limite de temps en secondes (pas specifier -> pas de limite de temps)",
     )
     parser.add_argument(
-        "--top_k",
-        "--k",
-        type=int,
-        default=None,
-        help="les k meilleurs pour la generation du model (pas specifier -> n'utilise pas de top k)",
-    )
-    parser.add_argument(
         "--max_tokens",
         "--l",
         type=int,
         default=None,
         help="la limite de tokens a generer (pas specifier -> aucune limite)",
+    )
+    parser.add_argument(
+        "--top_k",
+        "--k",
+        type=int,
+        default=None,
+        help="les k meilleurs pour la generation du model (pas specifier -> n'utilise pas de top k)",
     )
     parser.add_argument(
         "--temperature",

@@ -31,11 +31,11 @@ pour ajouter des presets ils sont modifiable simplement dans le fichier "./CLI/p
 Pour executer en ligne de commande le generate des svg:
 ```bash
 Exemple:
-$ python -m CLI.cli_generate --dataset_path dataset/samples_100 --N 45 --save_generate svg_generated  --model_name model_1.6M --version_ID 8 --time_limit 240 --temperature 0.8  --top_k 7 --max_tokens 50000
+$ python -m CLI.cli_generate --start_file dataset/samples_100/0045_circle_packing.svg --save_generate svg_generated  --model_name model_1.6M --version_ID 8 --time_limit 240 --temperature 1.0  --top_k 10 --max_tokens 50000
 ```
 cette comande vas lancer la generation d'un fichier SVG, pour continuer le fichier n°45 du dataset_100 en utilisant le model 1.6M et sa version n°8. Le temps limite de generation est 240 secondes ou 50000 tokens génerés. Il vas generer en utilisant une temperature de 0.8 et un topK de 7.
-Si --N n'est pas donné, il ne charge pas le dataset (on peut donner un dossier vide pour --dataset_path).
-le fichier generé est nommé "svg_generated" comme demandé et sera sauvgardé dans le dossier "repository_svg".
+Si --start_file n'est pas donné, il vas commencer un nouveau svg.
+le fichier generé est nommé "svg_generated" comme demandé et sera sauvgardé dans le dossier "repository_svg" si le .env ne l'as pas respecifié.
 
 Pour voir la description des parametres de chacun des fichier CLI:
 ```bash
