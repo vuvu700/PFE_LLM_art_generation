@@ -25,7 +25,7 @@ from metrics.historique import Historique
 from metrics.metrics import MetricsAccumulator
 from metrics.affichage import affiche_metrics
 
-_Device = Literal["cpu", "cuda"]
+_Device = Literal["cpu", "cuda", "mps"]
 _WPatternChr = Literal["S", "L"]
 _WPattern = tuple[_WPatternChr, ...]
 

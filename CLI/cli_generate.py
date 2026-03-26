@@ -78,9 +78,15 @@ def generate_cli(
         torch.cuda.empty_cache()
     except Exception:
         pass
-    model = Model.load(
-        model_name, versionID=version_ID, device=torch.device("cuda:0"), compile=False
-    )
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+
+    model = Model.load(model_name, versionID=version_ID, device=device, compile=False)
     model.set_wandb_state(False)
     model.show_infos()
 
