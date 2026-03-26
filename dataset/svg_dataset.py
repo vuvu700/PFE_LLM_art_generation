@@ -50,45 +50,45 @@ class SVGSample:
 
 
 @attrs.frozen
-class ChunckInfos:
+class ChunkInfo:
     """
-    informations sur les chuncks stockés dans le datasets
+    informations sur les chunks stockés dans le datasets
     """
 
     datasetIndex: int
-    """index du chunck dans le dataset"""
+    """index du chunk dans le dataset"""
     svgIndex: int
     """index du svg"""
-    chunckIndex: int
-    """index du chunck dans le svg"""
+    chunkIndex: int
+    """index du chunk dans le svg"""
 
 
 @attrs.frozen
-class DatasetChunck:
+class DatasetChunk:
     """
-    le contenu des chuncks dans le daatset pour permetre l'entrainement
+    le contenu des chunks dans le dataset pour permettre l'entrainement
     """
 
     tokensInput: _Tokens
-    """tokens du chunck en input du LLM"""
+    """tokens du chunk en input du LLM"""
     tokensOutput: _Tokens
-    """tokens du chunck en output du LLM"""
+    """tokens du chunk en output du LLM"""
     text: str
     """le text initial associé au tokens du chunk"""
-    indexes: ChunckInfos
-    """de que chunck dans quel svg il s'agit"""
+    indexes: ChunkInfo
+    """de que chunk dans quel svg il s'agit"""
 
 
 class BatchDatas(TypedDict):
     """
-    typage du contenu de chaque chunck avant d'ere regroupés par le dataloader
+    typage du contenu de chaque chunk avant d'ere regroupés par le dataloader
     """
 
     tokens: _Tokens
     targets: _Tokens
     datasetIndex: int
     svgIndex: int
-    chunckIndex: int
+    chunkIndex: int
 
 
 def clean_svg(svg: str) -> str:
@@ -182,7 +182,7 @@ def load_svg_samples(svg_dir: Path) -> list[SVGSample]:
 
 
 def chunk_tokens(tokens: list[int], context_size: int) -> list[_Tokens]:
-    """return the list of chuncks to be used as samples in the dataset \
+    """return the list of chunks to be used as samples in the dataset \
     from a tokenized single file `tokens`"""
     half = context_size // 2
     chunks: list[_Tokens] = []
@@ -270,7 +270,7 @@ class SVGDataset(Dataset):
         self.tokenizer = tokenizer
         self.decoder = decoder
         self.fillMissingTokens: bool = fillMissingTokens
-        self.chunks: list[DatasetChunck] = []
+        self.chunks: list[DatasetChunk] = []
 
         self.samples = load_svg_samples(svg_dir)
         if use_gcode:
@@ -285,13 +285,13 @@ class SVGDataset(Dataset):
             tokens = self.tokenizer("".join([START_TOKEN, txt, END_TOKEN, END_TOKEN]))
             svg_chunks = chunk_tokens(tokens, context_size)
             del tokens, sample
-            for chunck_index, tokensInOut in enumerate(svg_chunks):
+            for chunk_index, tokensInOut in enumerate(svg_chunks):
                 tokensInOut_raw = tokensInOut
                 # add padding at the end if needed (to size: context+1)
                 nbMissingTokens: int = self.context_size + 1 - len(tokensInOut)
                 assert (
                     nbMissingTokens >= 0
-                ), f"[BUG] unexpected chunck size: {len(tokensInOut)} ({self.context_size+1=})"
+                ), f"[BUG] unexpected chunk size: {len(tokensInOut)} ({self.context_size+1=})"
                 if self.fillMissingTokens and (nbMissingTokens > 0):
                     # => fill the missing tokens with IGNORE_INDEX (=> will be ignored)
                     tokensInOut = numpy.concat(
@@ -304,16 +304,16 @@ class SVGDataset(Dataset):
                         axis=0,
                     )
                 del nbMissingTokens
-                # save the chunck
+                # save the chunk
                 self.chunks.append(
-                    DatasetChunck(
+                    DatasetChunk(
                         tokensInput=tokensInOut[:-1],
                         tokensOutput=tokensInOut[1:],
                         text=self.decoder(tokensInOut_raw[:-1].tolist()),  # no padding
-                        indexes=ChunckInfos(
+                        indexes=ChunkInfo(
                             datasetIndex=len(self.chunks),
                             svgIndex=svg_index,
-                            chunckIndex=chunck_index,
+                            chunkIndex=chunk_index,
                         ),
                     )
                 )
@@ -329,5 +329,5 @@ class SVGDataset(Dataset):
             targets=ch.tokensOutput,
             datasetIndex=indexes.datasetIndex,
             svgIndex=indexes.svgIndex,
-            chunckIndex=indexes.chunckIndex,
+            chunkIndex=indexes.chunkIndex,
         )
